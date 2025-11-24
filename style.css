@@ -1,0 +1,256 @@
+/* --- Variables CSS (pour faciliter les changements de couleurs/fonts) --- */
+:root {
+    --primary-color: #0056b3; /* Un bleu plus institutionnel */
+    --secondary-color: #004085; /* Bleu plus foncé */
+    --text-color: #333;
+    --light-gray: #f4f4f4;
+    --dark-gray: #666;
+    --font-family-main: 'Arial', sans-serif;
+    --font-family-heading: 'Georgia', serif; /* Pour un aspect plus classique et professionnel */
+}
+
+/* --- Base --- */
+body {
+    font-family: var(--font-family-main);
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    color: var(--text-color);
+    background-color: #fff; /* Fond blanc par défaut */
+}
+
+.container {
+    width: 90%;
+    max-width: 960px; /* Limite la largeur pour une meilleure lisibilité */
+    margin: 0 auto;
+    padding: 20px 0;
+}
+
+h1, h2, h3 {
+    font-family: var(--font-family-heading);
+    color: var(--secondary-color);
+    margin-bottom: 15px;
+}
+
+h1 {
+    font-size: 2.8em;
+    margin-top: 10px;
+}
+
+h2 {
+    font-size: 2.2em;
+    text-align: center;
+    margin-bottom: 40px;
+    position: relative;
+}
+
+h2::after { /* Petite ligne sous les titres de section */
+    content: '';
+    display: block;
+    width: 60px;
+    height: 3px;
+    background: var(--primary-color);
+    margin: 10px auto 0;
+}
+
+h3 {
+    font-size: 1.6em;
+    color: var(--primary-color);
+    margin-bottom: 10px;
+}
+
+a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+p {
+    margin-bottom: 1em;
+}
+
+/* --- Header / Hero Section --- */
+.hero {
+    background: var(--primary-color); /* Fond du bandeau d'en-tête */
+    color: #fff;
+    padding: 60px 0;
+    text-align: center;
+}
+
+.hero-content {
+    display: flex;
+    flex-direction: column; /* Par défaut, les éléments sont empilés pour les petits écrans */
+    align-items: center;
+    justify-content: center;
+    text-align: center; /* Assure que le texte reste centré quand il est en colonne */
+}
+
+/* Nouveau : Règles pour les écrans plus larges */
+@media (min-width: 768px) {
+    .hero-content {
+        flex-direction: row; /* Aligne les éléments horizontalement */
+        text-align: left; /* Alignement du texte à gauche pour un look plus "carte de visite" */
+        justify-content: flex-start; /* Alignement au début (gauche) */
+        gap: 30px; /* Ajoute un espace entre l'image et le texte */
+    }
+}
+
+/* Ajustement pour l'image sur les grands écrans */
+@media (min-width: 768px) {
+    .profile-picture {
+        margin-bottom: 0; /* Plus de marge en bas si l'image est à côté */
+        flex-shrink: 0; /* Empêche l'image de rétrécir */
+    }
+}
+
+/* Ajustement pour le texte quand il est à côté de l'image */
+@media (min-width: 768px) {
+    .hero h1 {
+        font-size: 3em; /* Ajustement de la taille du titre pour mieux coller à l'image */
+        margin-top: 0; /* Pas de marge supérieure si aligné horizontalement */
+    }
+    .hero .subtitle {
+        font-size: 1.2em; /* Ajustement de la taille du sous-titre */
+    }
+}
+
+/* Nouveau bloc pour forcer le titre et le sous-titre à rester en colonne */
+.header-text {
+    /* Les éléments à l'intérieur de header-text sont par défaut en colonne */
+    display: flex;
+    flex-direction: column; 
+}
+
+@media (min-width: 768px) {
+    .header-text h1 {
+        font-size: 3em; 
+        margin-top: 0; /* Important pour que le titre soit en haut du bloc */
+        margin-bottom: 5px; /* Réduit l'espace entre le titre et le sous-titre */
+    }
+    
+    .header-text .subtitle {
+        font-size: 1.2em; 
+        margin-top: 0;
+    }
+}
+
+.profile-picture {
+    width: 150px; /* Taille de la photo */
+    height: 150px;
+    border-radius: 50%; /* Rend la photo ronde */
+    overflow: hidden; /* Cache les débordements si la photo n'est pas carrée */
+    border: 5px solid rgba(255, 255, 255, 0.8); /* Bordure blanche autour de la photo */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); /* Ombre légère */
+    margin-bottom: 20px;
+}
+
+.profile-picture img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* S'assure que l'image couvre bien la zone sans déformation */
+}
+
+.hero h1 {
+    color: #fff;
+    font-size: 3.5em; /* Plus grand pour le nom */
+    margin-bottom: 5px;
+}
+
+.hero .subtitle {
+    font-size: 1.4em;
+    opacity: 0.9;
+    margin-top: 0;
+    font-weight: 300;
+}
+
+/* --- Sections Générales --- */
+.section {
+    padding: 60px 0;
+    border-bottom: 1px solid #eee; /* Séparateur léger entre sections */
+}
+
+.section:nth-of-type(even) { /* Pour alterner les couleurs de fond */
+    background-color: var(--light-gray);
+}
+
+/* --- Enseignement Section --- */
+.enseignement-grid {
+    display: grid;
+    grid-template-columns: 1fr; /* Une colonne par défaut */
+    gap: 30px; /* Espacement entre les cartes */
+    margin-top: 30px;
+}
+
+@media (min-width: 768px) { /* Deux colonnes sur les écrans plus larges */
+    .enseignement-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.matiere-card {
+    background: #fff;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease;
+}
+
+.matiere-card:hover {
+    transform: translateY(-5px);
+}
+
+.matiere-card ul {
+    list-style: none; /* Supprime les puces par défaut */
+    padding: 0;
+    margin-top: 15px;
+}
+
+.matiere-card ul li {
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="%230056b3"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>') no-repeat left center;
+    background-size: 16px;
+    padding-left: 25px;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.note-enseignement, .note-contact {
+    text-align: center;
+    font-style: italic;
+    color: var(--dark-gray);
+    margin-top: 40px;
+}
+
+/* --- Footer --- */
+footer {
+    background: var(--secondary-color);
+    color: #fff;
+    text-align: center;
+    padding: 30px 0;
+    font-size: 0.9em;
+}
+
+/* --- Responsive Adjustments --- */
+@media (max-width: 600px) {
+    .hero {
+        padding: 40px 0;
+    }
+
+    .hero h1 {
+        font-size: 2.5em;
+    }
+
+    .hero .subtitle {
+        font-size: 1.1em;
+    }
+
+    h2 {
+        font-size: 1.8em;
+    }
+
+    .section {
+        padding: 40px 0;
+    }
+}
