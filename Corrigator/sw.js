@@ -1,4 +1,4 @@
-const CACHE_NAME = "corrigator-pwa-v1";
+const CACHE_NAME = "corrigator-pwa-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -43,8 +43,15 @@ self.addEventListener("fetch", (event) => {
   if (!isSameOrigin) return;
 
   event.respondWith(
-    caches.match(req).then((cached) => {
+    caches.match(req, { ignoreSearch: true }).then((cached) => {
       if (cached) return cached;
+
+      const navigationUrl = new URL(req.url);
+      const cleanPathRequest = new Request(`${navigationUrl.origin}${navigationUrl.pathname}`);
+
+      return caches.match(cleanPathRequest, { ignoreSearch: true }).then((pathCached) => {
+        if (pathCached) return pathCached;
+
       return fetch(req)
         .then((networkRes) => {
           if (!networkRes || networkRes.status !== 200 || networkRes.type !== "basic") {
@@ -60,6 +67,7 @@ self.addEventListener("fetch", (event) => {
           }
           return new Response("Offline", { status: 503, statusText: "Offline" });
         });
+      });
     })
   );
 });
