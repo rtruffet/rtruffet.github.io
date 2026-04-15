@@ -1,4 +1,4 @@
-const CACHE_NAME = "corrigator-pwa-v2";
+const CACHE_NAME = "corrigator-pwa-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -42,32 +42,43 @@ self.addEventListener("fetch", (event) => {
   const isSameOrigin = reqUrl.origin === self.location.origin;
   if (!isSameOrigin) return;
 
-  event.respondWith(
-    caches.match(req, { ignoreSearch: true }).then((cached) => {
-      if (cached) return cached;
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
 
-      const navigationUrl = new URL(req.url);
-      const cleanPathRequest = new Request(`${navigationUrl.origin}${navigationUrl.pathname}`);
+    // Pour les navigations HTML (corriger.html?devoir=..., devoir.html?id=..., etc.),
+    // on force la resolution par chemin sans query string.
+    if (req.mode === "navigate") {
+      const url = new URL(req.url);
+      const pathname = url.pathname;
+      const page = pathname.split("/").pop() || "index.html";
+      const target = page === "" ? "index.html" : page;
 
-      return caches.match(cleanPathRequest, { ignoreSearch: true }).then((pathCached) => {
-        if (pathCached) return pathCached;
+      const cachedPage = await cache.match(`./${target}`, { ignoreSearch: true });
+      if (cachedPage) return cachedPage;
 
-      return fetch(req)
-        .then((networkRes) => {
-          if (!networkRes || networkRes.status !== 200 || networkRes.type !== "basic") {
-            return networkRes;
-          }
-          const resClone = networkRes.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
-          return networkRes;
-        })
-        .catch(() => {
-          if (req.mode === "navigate") {
-            return caches.match("./index.html");
-          }
-          return new Response("Offline", { status: 503, statusText: "Offline" });
-        });
-      });
-    })
-  );
+      try {
+        const networkRes = await fetch(req);
+        if (networkRes && networkRes.status === 200 && networkRes.type === "basic") {
+          cache.put(req, networkRes.clone());
+        }
+        return networkRes;
+      } catch (_err) {
+        const fallback = await cache.match("./index.html", { ignoreSearch: true });
+        return fallback || new Response("Offline", { status: 503, statusText: "Offline" });
+      }
+    }
+
+    const cached = await cache.match(req, { ignoreSearch: true });
+    if (cached) return cached;
+
+    try {
+      const networkRes = await fetch(req);
+      if (networkRes && networkRes.status === 200 && networkRes.type === "basic") {
+        cache.put(req, networkRes.clone());
+      }
+      return networkRes;
+    } catch (_err) {
+      return new Response("Offline", { status: 503, statusText: "Offline" });
+    }
+  })());
 });
