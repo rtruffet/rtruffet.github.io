@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corrigator – Gérer le devoir</title>
+  <link rel="icon" type="image/png" href="corrigator_icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0d4ea0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <h1 class="brand">
+    <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
+  </h1>
+  <a href="index.html">Devoirs</a>
+  <a href="etudiants.html">Étudiants</a>
+  <div class="nav-devoir-title" id="devoir-titre">Chargement…</div>
+  <div class="nav-sync-actions">
+    <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
+    <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
+    <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
+    <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+  </div>
+</nav>
+
+<main>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap">
+      <div id="ds-tabs" style="display:flex;gap:.45rem;flex-wrap:wrap">
+        <button class="btn btn-neutral btn-sm ds-tab-btn" data-tab="groupes" onclick="switchTab('groupes')">Groupes</button>
+        <button class="btn btn-neutral btn-sm ds-tab-btn" data-tab="exercices" onclick="switchTab('exercices')">Exercices et questions</button>
+        <button class="btn btn-neutral btn-sm ds-tab-btn" data-tab="statistiques" onclick="switchTab('statistiques')">Statistiques</button>
+        <button class="btn btn-neutral btn-sm ds-tab-btn" data-tab="tableau" onclick="switchTab('tableau')">Tableau</button>
+        <button class="btn btn-neutral btn-sm ds-tab-btn" data-tab="mails" onclick="switchTab('mails')">Mails</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <label for="filtre-groupe-res" style="font-size:.85rem;color:#555">Filtre groupe</label>
+        <select id="filtre-groupe-res" onchange="onResultGroupChange()"
+                style="padding:.35rem .75rem;border:1px solid #ccc;border-radius:6px;font-size:.85rem">
+          <option value="">Tous les groupes</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <section class="ds-tab-panel" id="tab-groupes">
+    <div class="card">
+    <h2>Groupes affectés au devoir</h2>
+    <div class="form-row">
+      <select id="devoir-groupe-select" style="flex:1;min-width:220px;padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px">
+        <option value="">-- Ajouter un groupe --</option>
+      </select>
+      <button class="btn btn-primary" onclick="addGroupeToDevoir()">Ajouter</button>
+    </div>
+    <ul class="etudiant-list" id="devoir-groupes-list" style="margin-top:.5rem">
+      <li style="color:#888">Aucun groupe affecté pour l'instant.</li>
+    </ul>
+
+  </div>
+  </section>
+
+  <!-- ── Structure du devoir ─────────────────────────────────────────────── -->
+  <section class="ds-tab-panel" id="tab-exercices">
+    <div class="card">
+    <h2>Structure du devoir</h2>
+    <div id="exercices-zone"></div>
+
+    <hr style="margin:1rem 0">
+
+    <h3 style="font-size:.95rem;margin-bottom:.5rem">Ajouter un exercice</h3>
+    <div class="form-row">
+      <input type="text" id="exo-titre" placeholder="Titre de l'exercice">
+      <button class="btn btn-primary" onclick="createExercice()">Ajouter</button>
+    </div>
+  </div>
+  </section>
+
+  <section class="ds-tab-panel" id="tab-statistiques">
+    <div class="card">
+      <h2>Statistiques</h2>
+      <div id="stats-zone"></div>
+    </div>
+  </section>
+
+  <!-- ── Résultats ──────────────────────────────────────────────────────── -->
+  <section class="ds-tab-panel" id="tab-tableau">
+    <div class="card">
+    <h2>Résultats</h2>
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
+      <button class="btn btn-neutral btn-sm" onclick="loadResultats()">Actualiser</button>
+      <button class="btn btn-sm btn-ghost-danger" onclick="resetAllAjustements()">Réinitialiser tous les bonus</button>
+      <label for="result-sort" style="font-size:.85rem;color:#555">Tri</label>
+      <select id="result-sort" onchange="renderResultatsTable()"
+              style="padding:.35rem .75rem;border:1px solid #ccc;border-radius:6px;font-size:.85rem">
+        <option value="nom">Nom</option>
+        <option value="note_desc">Note /20 décroissante</option>
+        <option value="note_asc">Note /20 croissante</option>
+        <option value="classement">Classement groupe</option>
+      </select>
+    </div>
+    <div id="resultats-zone" style="margin-top:.75rem"></div>
+  </div>
+  </section>
+
+  <section class="ds-tab-panel" id="tab-mails">
+    <div class="card">
+    <h2>Mails aux étudiants</h2>
+    <details style="margin-bottom:.8rem;background:#f9fbff;border:1px solid #dde6f2;border-radius:8px;padding:.6rem .75rem">
+      <summary style="cursor:pointer;font-weight:600;color:#2c3e50">Personnaliser le contenu du mail</summary>
+      <div style="margin-top:.75rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.45rem .9rem">
+        <label style="display:flex;align-items:center;gap:.45rem"><input id="mail-opt-note-brute" type="checkbox" checked> Inclure note brute</label>
+        <label style="display:flex;align-items:center;gap:.45rem"><input id="mail-opt-note20" type="checkbox" checked> Inclure note sur 20</label>
+        <label style="display:flex;align-items:center;gap:.45rem"><input id="mail-opt-ajustements" type="checkbox" checked> Inclure bonus/malus</label>
+        <label style="display:flex;align-items:center;gap:.45rem"><input id="mail-opt-classement" type="checkbox" checked> Inclure classement du groupe</label>
+        <label style="display:flex;align-items:center;gap:.45rem"><input id="mail-opt-detail" type="checkbox" checked> Inclure détail de correction</label>
+      </div>
+      <div style="margin-top:.7rem;display:grid;gap:.55rem">
+        <textarea id="mail-texte-1" placeholder="Texte libre 1 (début du mail)"
+          style="min-height:72px;padding:.5rem .7rem;border:1px solid #ccd4df;border-radius:6px"></textarea>
+        <textarea id="mail-texte-2" placeholder="Texte libre 2 (fin du mail)"
+          style="min-height:72px;padding:.5rem .7rem;border:1px solid #ccd4df;border-radius:6px"></textarea>
+        <input id="mail-signature" type="text" placeholder="Signature"
+          value="Votre enseignant"
+          style="padding:.45rem .7rem;border:1px solid #ccd4df;border-radius:6px">
+      </div>
+    </details>
+    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem">
+      <button class="btn btn-neutral btn-sm" onclick="loadMailTemplates()">Actualiser la liste</button>
+      <button class="btn btn-neutral btn-sm" onclick="selectAllMails(true)">Tout cocher</button>
+      <button class="btn btn-neutral btn-sm" onclick="selectAllMails(false)">Tout décocher</button>
+      <button class="btn btn-success btn-sm" onclick="openSelectedMails()">Ouvrir les mails cochés</button>
+    </div>
+    <p style="color:#666;font-size:.85rem;margin-bottom:.5rem">
+      L'ouverture multiple dépend du navigateur (blocage de popups possible).
+    </p>
+    <div id="mail-list-zone"></div>
+  </div>
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script src="local-api.js"></script>
+<script src="pwa-register.js"></script>
+<script src="sync-nav.js"></script>
+<script>
+const API = "http://localhost:8000";
+const params = new URLSearchParams(location.search);
+const devoirId = params.get("id");
+let mailTemplates = [];
+let currentResultats = [];
+let devoirGroupes = [];
+const rehausseSaveTimers = {};
+
+if (!devoirId) location.href = "index.html";
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2000);
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll(".ds-tab-panel").forEach(panel => {
+    panel.style.display = "none";
+  });
+  const activePanel = document.getElementById(`tab-${tabName}`);
+  if (activePanel) activePanel.style.display = "";
+
+  document.querySelectorAll(".ds-tab-btn").forEach(btn => {
+    const active = btn.dataset.tab === tabName;
+    btn.classList.toggle("btn-primary", active);
+    btn.classList.toggle("btn-neutral", !active);
+  });
+}
+
+/* ── Chargement du devoir + exercices ────────────────────────────────────── */
+
+async function loadDevoir() {
+  const res = await fetch(`${API}/devoirs/${devoirId}`);
+  if (!res.ok) { location.href = "index.html"; return; }
+  const devoir = await res.json();
+
+  document.title = `Corrigator – ${devoir.titre}`;
+  document.getElementById("devoir-titre").textContent = devoir.titre;
+  document.getElementById("devoir-titre").title = devoir.description || devoir.titre;
+
+  renderExercices(devoir.exercices);
+}
+
+function renderGroupesDevoir(groupes) {
+  const ul = document.getElementById("devoir-groupes-list");
+  ul.innerHTML = "";
+  if (!groupes.length) {
+    ul.innerHTML = "<li style='color:#888'>Aucun groupe affecté pour l'instant.</li>";
+    return;
+  }
+  for (const g of groupes) {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:.35rem">
+        <strong>${g.nom}</strong>
+        <label style="display:flex;align-items:center;gap:.45rem;color:#555;font-size:.85rem">
+          Réhaussement groupe (%)
+          <input type="number" step="0.5" value="${Number(g.rehausse_pct || 0).toFixed(2)}"
+            oninput="queueSaveRehaussePct(${g.id}, this.value)"
+            style="width:76px;padding:.2rem .3rem;border:1px solid #ccc;border-radius:5px;text-align:right">
+        </label>
+      </div>
+      <div style="display:flex;align-items:center;gap:.4rem">
+        <a class="btn btn-success btn-sm" href="corriger.html?devoir=${devoirId}&groupe=${g.id}">▶ Corriger</a>
+        <button class="btn btn-danger btn-sm" onclick="removeGroupeFromDevoir(${g.id})">✕</button>
+      </div>`;
+    ul.appendChild(li);
+  }
+}
+
+function queueSaveRehaussePct(groupeId, rawValue) {
+  const v = parseFloat(rawValue || "0");
+  const bonus_pct = Number.isFinite(v) ? v : 0;
+  if (rehausseSaveTimers[groupeId]) {
+    clearTimeout(rehausseSaveTimers[groupeId]);
+  }
+  rehausseSaveTimers[groupeId] = setTimeout(() => {
+    saveRehaussePct(groupeId, bonus_pct);
+  }, 350);
+}
+
+async function saveRehaussePct(groupeId, bonus_pct) {
+  const res = await fetch(`${API}/devoirs/${devoirId}/groupes/${groupeId}/rehausse`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bonus_pct }),
+  });
+  if (!res.ok) {
+    toast("Erreur sauvegarde réhaussement");
+    return;
+  }
+
+  const g = devoirGroupes.find(x => x.id === groupeId);
+  if (g) g.rehausse_pct = bonus_pct;
+
+  await loadResultats();
+  await loadMailTemplates();
+}
+
+async function loadGroupesPourDevoir() {
+  const [resAll, resAssigned] = await Promise.all([
+    fetch(`${API}/groupes`),
+    fetch(`${API}/devoirs/${devoirId}/groupes`),
+  ]);
+  const all = await resAll.json();
+  const assigned = await resAssigned.json();
+  devoirGroupes = assigned;
+  const assignedIds = new Set(assigned.map(g => g.id));
+
+  const sel = document.getElementById("devoir-groupe-select");
+  const current = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  for (const g of all) {
+    if (assignedIds.has(g.id)) continue;
+    sel.appendChild(new Option(g.nom, g.id));
+  }
+  if (current) sel.value = current;
+
+  const filtreRes = document.getElementById("filtre-groupe-res");
+  const prevRes = filtreRes.value;
+  while (filtreRes.options.length > 1) filtreRes.remove(1);
+  for (const g of assigned) {
+    filtreRes.appendChild(new Option(g.nom, g.id));
+  }
+  if (prevRes) filtreRes.value = prevRes;
+  renderGroupesDevoir(assigned);
+}
+
+async function addGroupeToDevoir() {
+  const groupeId = document.getElementById("devoir-groupe-select").value;
+  if (!groupeId) { toast("Choisir un groupe"); return; }
+  const res = await fetch(`${API}/devoirs/${devoirId}/groupes/${groupeId}`, { method: "POST" });
+  if (!res.ok) { toast("Erreur d'affectation"); return; }
+  toast("Groupe affecté");
+  await loadGroupesPourDevoir();
+  await loadDevoir();
+  await loadResultats();
+}
+
+async function removeGroupeFromDevoir(groupeId) {
+  const res = await fetch(`${API}/devoirs/${devoirId}/groupes/${groupeId}`, { method: "DELETE" });
+  if (!res.ok) { toast("Erreur suppression"); return; }
+  toast("Groupe retiré");
+  await loadGroupesPourDevoir();
+  await loadDevoir();
+  await loadResultats();
+}
+
+function renderExercices(exercices) {
+  const zone = document.getElementById("exercices-zone");
+  zone.innerHTML = "";
+
+  if (exercices.length === 0) {
+    zone.innerHTML = "<p style='color:#888'>Aucun exercice.</p>";
+    return;
+  }
+
+  for (let idx = 0; idx < exercices.length; idx++) {
+    const ex = exercices[idx];
+    const div = document.createElement("div");
+    div.className = "exercice-card";
+    div.dataset.exerciceId = String(ex.id);
+    div.style.marginBottom = "1rem";
+    const canMoveUp = idx > 0;
+    const canMoveDown = idx < exercices.length - 1;
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+        <strong>${ex.titre}</strong>
+        <div style="display:flex;align-items:center;gap:.3rem">
+          <button data-reorder="1" data-target="exercice" data-move="up" class="btn btn-neutral btn-sm" onclick="moveExercice(${ex.id}, -1, this)" ${!canMoveUp ? "disabled" : ""}>▲</button>
+          <button data-reorder="1" data-target="exercice" data-move="down" class="btn btn-neutral btn-sm" onclick="moveExercice(${ex.id}, 1, this)" ${!canMoveDown ? "disabled" : ""}>▼</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteExercice(${ex.id})">✕ Supprimer</button>
+        </div>
+      </div>
+      <div id="questions-${ex.id}" style="margin-left:1rem"></div>
+      <div class="form-row" style="margin-left:1rem;margin-top:.4rem">
+        <input type="text"   id="q-enonce-${ex.id}"  placeholder="Énoncé de la question">
+        <input type="number" id="q-poids-${ex.id}"   placeholder="Poids (pts)" value="1" min="0" step="0.5" style="max-width:82px">
+        <button class="btn btn-primary btn-sm" onclick="createQuestion(${ex.id})">+ Question</button>
+      </div>`;
+    zone.appendChild(div);
+
+    renderQuestions(ex.id, ex.questions);
+  }
+
+  updateExerciceMoveButtons();
+}
+
+function renderQuestions(exerciceId, questions) {
+  const zone = document.getElementById(`questions-${exerciceId}`);
+  zone.innerHTML = "";
+
+  if (questions.length === 0) {
+    zone.innerHTML = "<p style='color:#aaa;font-size:.85rem'>Pas encore de questions.</p>";
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:.9rem;margin-bottom:.5rem";
+  table.innerHTML = `<thead><tr>
+    <th style="text-align:left;padding:.3rem .5rem;background:#f5f7fa">Énoncé</th>
+    <th style="text-align:center;padding:.3rem .5rem;background:#f5f7fa;width:80px">Poids</th>
+    <th style="text-align:center;padding:.3rem .5rem;background:#f5f7fa;width:90px">Ordre</th>
+    <th style="background:#f5f7fa;width:60px"></th>
+  </tr></thead>`;
+
+  const tbody = document.createElement("tbody");
+  for (let idx = 0; idx < questions.length; idx++) {
+    const q = questions[idx];
+    const canMoveUp = idx > 0;
+    const canMoveDown = idx < questions.length - 1;
+    const tr = document.createElement("tr");
+    tr.dataset.questionId = String(q.id);
+    tr.innerHTML = `
+      <td style="padding:.3rem .5rem;border-bottom:1px solid #f0f0f0">
+        <input type="text" value="${escHtml(q.enonce)}" style="width:100%"
+               onchange="updateQuestion(${q.id}, {enonce: this.value})">
+      </td>
+      <td style="padding:.3rem .5rem;border-bottom:1px solid #f0f0f0;text-align:center">
+        <input type="number" value="${q.poids}" min="0" step="0.5" style="width:58px;text-align:center"
+               onchange="updateQuestion(${q.id}, {poids: parseFloat(this.value)})">
+      </td>
+      <td style="padding:.3rem .5rem;border-bottom:1px solid #f0f0f0;text-align:center;display:flex;gap:.25rem;justify-content:center">
+        <button data-reorder="1" data-target="question" data-move="up" class="btn btn-neutral btn-xs" onclick="moveQuestion(${q.id}, -1, this)" ${!canMoveUp ? "disabled" : ""} style="padding:.15rem .3rem">▲</button>
+        <button data-reorder="1" data-target="question" data-move="down" class="btn btn-neutral btn-xs" onclick="moveQuestion(${q.id}, 1, this)" ${!canMoveDown ? "disabled" : ""} style="padding:.15rem .3rem">▼</button>
+      </td>
+      <td style="padding:.3rem .5rem;border-bottom:1px solid #f0f0f0;text-align:center">
+        <button class="btn btn-danger btn-sm" onclick="deleteQuestion(${q.id})">✕</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  zone.appendChild(table);
+  updateQuestionMoveButtons(tbody);
+}
+
+/* ── Exercices ───────────────────────────────────────────────────────────── */
+
+async function createExercice() {
+  const titre = document.getElementById("exo-titre").value.trim();
+  if (!titre) { toast("Titre requis"); return; }
+  const res = await fetch(`${API}/devoirs/${devoirId}/exercices`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ titre, ordre: 0 }),
+  });
+  if (res.ok) {
+    document.getElementById("exo-titre").value = "";
+    toast("Exercice ajouté");
+    await loadDevoir();
+  }
+}
+
+async function deleteExercice(id) {
+  if (!confirm("Supprimer cet exercice et ses questions ?")) return;
+  await fetch(`${API}/exercices/${id}`, { method: "DELETE" });
+  await loadDevoir();
+}
+
+/* ── Questions ───────────────────────────────────────────────────────────── */
+
+async function createQuestion(exerciceId) {
+  const enonce = document.getElementById(`q-enonce-${exerciceId}`).value.trim();
+  const poids  = parseFloat(document.getElementById(`q-poids-${exerciceId}`).value) || 1;
+  if (!enonce) { toast("Énoncé requis"); return; }
+
+  const res = await fetch(`${API}/exercices/${exerciceId}/questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enonce, poids, ordre: 0 }),
+  });
+  if (res.ok) {
+    document.getElementById(`q-enonce-${exerciceId}`).value = "";
+    toast("Question ajoutée");
+    await loadDevoir();
+  }
+}
+
+async function updateQuestion(id, fields) {
+  await fetch(`${API}/questions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+  toast("Mis à jour");
+}
+
+async function deleteQuestion(id) {
+  if (!confirm("Supprimer cette question ?")) return;
+  await fetch(`${API}/questions/${id}`, { method: "DELETE" });
+  await loadDevoir();
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function updateExerciceMoveButtons() {
+  const cards = Array.from(document.querySelectorAll("#exercices-zone .exercice-card"));
+  cards.forEach((card, idx) => {
+    const upBtn = card.querySelector('button[data-target="exercice"][data-move="up"]');
+    const downBtn = card.querySelector('button[data-target="exercice"][data-move="down"]');
+    if (upBtn) upBtn.disabled = idx === 0;
+    if (downBtn) downBtn.disabled = idx === cards.length - 1;
+  });
+}
+
+function updateQuestionMoveButtons(tbody) {
+  const rows = Array.from(tbody.querySelectorAll("tr[data-question-id]"));
+  rows.forEach((row, idx) => {
+    const upBtn = row.querySelector('button[data-target="question"][data-move="up"]');
+    const downBtn = row.querySelector('button[data-target="question"][data-move="down"]');
+    if (upBtn) upBtn.disabled = idx === 0;
+    if (downBtn) downBtn.disabled = idx === rows.length - 1;
+  });
+}
+
+function setReorderButtonsDisabled(scopeEl, disabled) {
+  if (!scopeEl) return;
+  scopeEl.querySelectorAll('button[data-reorder="1"]').forEach(btn => {
+    if (disabled) {
+      btn.dataset.wasDisabled = btn.disabled ? "1" : "0";
+      btn.disabled = true;
+    } else {
+      btn.disabled = btn.dataset.wasDisabled === "1";
+      delete btn.dataset.wasDisabled;
+    }
+  });
+}
+
+async function moveExercice(exerciceId, direction, triggerBtn) {
+  const zone = document.getElementById("exercices-zone");
+  const card = triggerBtn?.closest(".exercice-card");
+  if (!zone || !card) return;
+
+  const sibling = direction < 0 ? card.previousElementSibling : card.nextElementSibling;
+  if (!sibling || !sibling.classList.contains("exercice-card")) return;
+
+  setReorderButtonsDisabled(zone, true);
+  card.classList.add(direction < 0 ? "move-up" : "move-down");
+  sibling.classList.add("move-peer");
+  await wait(180);
+
+  if (direction < 0) {
+    zone.insertBefore(card, sibling);
+  } else {
+    zone.insertBefore(sibling, card);
+  }
+  card.classList.remove("move-up", "move-down");
+  sibling.classList.remove("move-peer");
+  updateExerciceMoveButtons();
+
+  const res = await fetch(`${API}/exercices/${exerciceId}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ direction }),
+  });
+
+  if (res.ok) {
+    const dirLabel = direction < 0 ? "remonté" : "descendu";
+    toast(`Exercice ${dirLabel}`);
+  } else {
+    if (direction < 0) {
+      zone.insertBefore(sibling, card);
+    } else {
+      zone.insertBefore(card, sibling);
+    }
+    updateExerciceMoveButtons();
+    toast("Erreur déplacement exercice");
+  }
+  setReorderButtonsDisabled(zone, false);
+  updateExerciceMoveButtons();
+}
+
+async function moveQuestion(questionId, direction, triggerBtn) {
+  const tbody = triggerBtn?.closest("tbody");
+  const row = triggerBtn?.closest("tr");
+  if (!tbody || !row) return;
+
+  const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
+  if (!sibling) return;
+
+  setReorderButtonsDisabled(tbody, true);
+  row.classList.add(direction < 0 ? "move-up" : "move-down");
+  sibling.classList.add("move-peer");
+  await wait(180);
+
+  if (direction < 0) {
+    tbody.insertBefore(row, sibling);
+  } else {
+    tbody.insertBefore(sibling, row);
+  }
+  row.classList.remove("move-up", "move-down");
+  sibling.classList.remove("move-peer");
+  updateQuestionMoveButtons(tbody);
+
+  const res = await fetch(`${API}/questions/${questionId}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ direction }),
+  });
+
+  if (res.ok) {
+    const dirLabel = direction < 0 ? "remontée" : "descendue";
+    toast(`Question ${dirLabel}`);
+  } else {
+    if (direction < 0) {
+      tbody.insertBefore(sibling, row);
+    } else {
+      tbody.insertBefore(row, sibling);
+    }
+    updateQuestionMoveButtons(tbody);
+    toast("Erreur déplacement question");
+  }
+  setReorderButtonsDisabled(tbody, false);
+  updateQuestionMoveButtons(tbody);
+}
+
+/* ── Résultats ───────────────────────────────────────────────────────────── */
+
+async function loadResultats() {
+  const groupeId = document.getElementById("filtre-groupe-res").value;
+  const url = groupeId
+    ? `${API}/devoirs/${devoirId}/resultats?groupe_id=${groupeId}`
+    : `${API}/devoirs/${devoirId}/resultats`;
+  const res = await fetch(url);
+  const data = await res.json();
+  currentResultats = data;
+  renderResultatsTable();
+  renderStats(data);
+}
+
+function getSortedResultats() {
+  const sortBy = document.getElementById("result-sort")?.value || "nom";
+  const rows = [...currentResultats];
+
+  if (sortBy === "note_desc") {
+    rows.sort((a, b) => {
+      const na = Number(a.note_sur_20 || 0);
+      const nb = Number(b.note_sur_20 || 0);
+      if (nb !== na) return nb - na;
+      return `${a.etudiant.nom} ${a.etudiant.prenom}`.localeCompare(`${b.etudiant.nom} ${b.etudiant.prenom}`, "fr", { sensitivity: "base" });
+    });
+    return rows;
+  }
+
+  if (sortBy === "note_asc") {
+    rows.sort((a, b) => {
+      const na = Number(a.note_sur_20 || 0);
+      const nb = Number(b.note_sur_20 || 0);
+      if (na !== nb) return na - nb;
+      return `${a.etudiant.nom} ${a.etudiant.prenom}`.localeCompare(`${b.etudiant.nom} ${b.etudiant.prenom}`, "fr", { sensitivity: "base" });
+    });
+    return rows;
+  }
+
+  if (sortBy === "classement") {
+    rows.sort((a, b) => {
+      const aRank = (a.classement_groupe == null) ? Number.POSITIVE_INFINITY : Number(a.classement_groupe);
+      const bRank = (b.classement_groupe == null) ? Number.POSITIVE_INFINITY : Number(b.classement_groupe);
+      if (aRank !== bRank) return aRank - bRank;
+      return `${a.etudiant.nom} ${a.etudiant.prenom}`.localeCompare(`${b.etudiant.nom} ${b.etudiant.prenom}`, "fr", { sensitivity: "base" });
+    });
+    return rows;
+  }
+
+  rows.sort((a, b) => `${a.etudiant.nom} ${a.etudiant.prenom}`.localeCompare(`${b.etudiant.nom} ${b.etudiant.prenom}`, "fr", { sensitivity: "base" }));
+  return rows;
+}
+
+function renderResultatsTable() {
+  const zone = document.getElementById("resultats-zone");
+  const data = getSortedResultats();
+
+  if (data.length === 0) {
+    zone.innerHTML = "<p style='color:#888'>Pas d'étudiants ou pas de questions.</p>";
+    return;
+  }
+
+  const rows = data.map(r => {
+    const note20 = Number(r.note_sur_20 || 0);
+    const ratio = Math.max(0, Math.min(20, note20)) / 20;
+    let noteHue;
+    if (ratio < 0.5) {
+      noteHue = ratio * 80;  // 0 to 0.5: red (0°) to orange (40°)
+    } else {
+      noteHue = 40 + (ratio - 0.5) * 220;  // 0.5 to 1: orange (40°) to cyan-green (150°)
+    }
+    noteHue = Math.round(noteHue);
+    const noteTextColor = "#1a1a2e";
+    const noteStyle = r.copie_corrigee
+      ? `background:hsl(${noteHue}, 100%, 45%);border:1px solid hsl(${noteHue}, 100%, 30%);color:${noteTextColor}`
+      : "background:#f3f4f6;border:1px solid #d7dce3;color:#6b7280";
+    const statut = r.copie_corrigee
+      ? '<span class="result-status result-status-ok">Corrigée</span>'
+      : '<span class="result-status result-status-pending">Non corrigée</span>';
+    const classement = (r.classement_groupe == null)
+      ? "-"
+      : `${r.classement_groupe}/${r.nb_corrigees_groupe}`;
+
+    const absVal = Number(r.bonus_abs || 0);
+    const pctVal = Number(r.bonus_pct || 0);
+    const gPctVal = Number(r.rehausse_groupe_pct || 0);
+
+    return `<tr>
+      <td class="cell-student"><strong>${r.etudiant.nom} ${r.etudiant.prenom}</strong></td>
+      <td class="cell-note">
+        <span class="note-chip" style="${noteStyle}">${note20.toFixed(2)} / 20</span>
+      </td>
+      <td class="cell-rank"><strong>${classement}</strong></td>
+      <td class="cell-bonus">
+        <input type="number" step="0.1" value="${absVal.toFixed(2)}" data-field="abs" data-student-id="${r.etudiant.id}"
+          style="width:52px;min-width:52px;max-width:52px;box-sizing:border-box;padding:.12rem .2rem;border:1px solid #ccc;border-radius:5px;text-align:right">
+      </td>
+      <td class="cell-bonus">
+        <input type="number" step="0.5" value="${pctVal.toFixed(2)}" data-field="pct" data-student-id="${r.etudiant.id}"
+          style="width:52px;min-width:52px;max-width:52px;box-sizing:border-box;padding:.12rem .2rem;border:1px solid #ccc;border-radius:5px;text-align:right">
+      </td>
+      <td class="cell-group-bonus">${gPctVal.toFixed(2)}%</td>
+      <td class="cell-actions">
+        <button class="btn btn-sm btn-ghost" onclick="saveAjustementEtudiant(${r.etudiant.id})">Enregistrer</button>
+      </td>
+      <td class="cell-status">${statut}</td>
+    </tr>`;
+  }).join("");
+
+  zone.innerHTML = `<table class="resultats-table">
+    <colgroup>
+      <col style="width:23%">
+      <col style="width:13%">
+      <col style="width:14%">
+      <col style="width:9%">
+      <col style="width:9%">
+      <col style="width:12%">
+      <col style="width:12%">
+      <col style="width:8%">
+    </colgroup>
+    <thead><tr>
+      <th>Étudiant</th>
+      <th>Note finale</th>
+      <th>Classement groupe</th>
+      <th>Bonus abs</th>
+      <th>Bonus %</th>
+      <th>Réhausse groupe %</th>
+      <th>Action</th>
+      <th>Statut</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+async function saveAjustementEtudiant(etudiantId) {
+  await persistAjustementEtudiant(etudiantId);
+}
+
+async function resetAllAjustements() {
+  const data = getSortedResultats();
+  if (!data.length) {
+    toast("Aucun étudiant à réinitialiser");
+    return;
+  }
+  if (!confirm("Réinitialiser Bonus abs et Bonus % pour tous les étudiants affichés ?")) return;
+
+  const requests = data.map(r => fetch(`${API}/devoirs/${devoirId}/ajustements/${r.etudiant.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bonus_abs: 0, bonus_pct: 0 }),
+  }));
+
+  const results = await Promise.allSettled(requests);
+  const failed = results.filter(x => x.status === "rejected" || (x.status === "fulfilled" && !x.value.ok)).length;
+
+  if (failed > 0) {
+    toast(`Réinitialisation partielle (${data.length - failed}/${data.length})`);
+  } else {
+    toast("Bonus réinitialisés pour tous");
+  }
+
+  await loadResultats();
+  await loadMailTemplates();
+}
+
+async function persistAjustementEtudiant(etudiantId, successMessage = "Bonus/malus enregistré") {
+  const absInput = document.querySelector(`input[data-field="abs"][data-student-id="${etudiantId}"]`);
+  const pctInput = document.querySelector(`input[data-field="pct"][data-student-id="${etudiantId}"]`);
+  if (!absInput || !pctInput) return;
+
+  const bonus_abs = parseFloat(absInput.value || "0") || 0;
+  const bonus_pct = parseFloat(pctInput.value || "0") || 0;
+
+  const res = await fetch(`${API}/devoirs/${devoirId}/ajustements/${etudiantId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bonus_abs, bonus_pct }),
+  });
+
+  if (!res.ok) {
+    toast("Erreur lors de l'enregistrement");
+    return;
+  }
+
+  toast(successMessage);
+  await loadResultats();
+  await loadMailTemplates();
+}
+
+function renderStats(data) {
+  const zone = document.getElementById("stats-zone");
+  const corrigees = data.filter(r => r.copie_corrigee);
+  if (!corrigees.length) {
+    zone.innerHTML = "<p style='color:#888'>Aucune copie corrigée pour ce filtre.</p>";
+    return;
+  }
+
+  const notes20 = corrigees
+    .map(r => Number(r.note_sur_20 || 0))
+    .filter(n => !Number.isNaN(n));
+  const totalCorrigees = notes20.length;
+  const tries = [...notes20].sort((a, b) => a - b);
+  const moyenne = notes20.reduce((a, b) => a + b, 0) / totalCorrigees;
+  const min = tries[0];
+  const max = tries[tries.length - 1];
+
+  const quantile = (arr, q) => {
+    if (!arr.length) return 0;
+    const pos = (arr.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    if (arr[base + 1] !== undefined) {
+      return arr[base] + rest * (arr[base + 1] - arr[base]);
+    }
+    return arr[base];
+  };
+
+  const q1 = quantile(tries, 0.25);
+  const med = quantile(tries, 0.5);
+  const q3 = quantile(tries, 0.75);
+
+  const bins = Array.from({ length: 20 }, (_, i) => ({ x: i, n: 0 }));
+  notes20.forEach(v => {
+    const idx = Math.max(0, Math.min(19, Math.floor(v)));
+    bins[idx].n += 1;
+  });
+  const maxBin = Math.max(...bins.map(b => b.n), 1);
+  const toPctNumber = value => (Math.max(0, Math.min(20, value)) / 20) * 100;
+  const toPct = value => `${toPctNumber(value)}%`;
+  const binWidthPct = 100 / 20;
+  const bars = bins.map(b => {
+    const h = Math.round((b.n / maxBin) * 120);
+    return `<div title="${b.x}-${b.x + 1}: ${b.n}" class="stats-histogram-bin" style="left:${toPct(b.x)};width:${binWidthPct}%">
+      <div class="stats-histogram-bar" style="height:${h}px"></div>
+    </div>`;
+  }).join("");
+  const axisTicks = Array.from({ length: 21 }, (_, i) => {
+    const major = i % 5 === 0 ? "major" : "minor";
+    return `<span class="stats-axis-tick ${major}" style="left:${toPct(i)}"></span>`;
+  }).join("");
+  const topMarkerBase = -28;
+  const topMarkerStep = 32;
+  const bottomMarkerBase = 116;
+  const bottomMarkerStep = 30;
+  const markerSeed = [
+    { label: "Min", value: min, anchorTop: 61, anchorBottom: 89 },
+    { label: "Q1", value: q1, anchorTop: 50, anchorBottom: 61 },
+    { label: "Médiane", value: med, anchorTop: 44, anchorBottom: 104 },
+    { label: "Moyenne", value: moyenne, anchorTop: 68, anchorBottom: 61 },
+    { label: "Q3", value: q3, anchorTop: 50, anchorBottom: 61 },
+    { label: "Max", value: max, anchorTop: 61, anchorBottom: 89 },
+  ].map(item => ({ ...item, pct: toPctNumber(item.value) }));
+
+  markerSeed.sort((a, b) => a.pct - b.pct);
+  const topLevelLastPct = [];
+  const bottomLevelLastPct = [];
+  const markerAnnotations = markerSeed.map(item => {
+    const side = item.label === "Q1" || item.label === "Q3" || item.label === "Moyenne" ? "bottom" : "top";
+    const levelPcts = side === "top" ? topLevelLastPct : bottomLevelLastPct;
+    let level = 0;
+    while (levelPcts[level] != null && Math.abs(item.pct - levelPcts[level]) < 14) {
+      level += 1;
+    }
+    levelPcts[level] = item.pct;
+
+    const labelTop = side === "top"
+      ? topMarkerBase + level * topMarkerStep
+      : bottomMarkerBase + level * bottomMarkerStep;
+    const labelBottom = labelTop + 30;
+    const connectorTop = side === "top" ? labelBottom + 2 : item.anchorBottom + 2;
+    const connectorHeight = side === "top"
+      ? Math.max(0, item.anchorTop - labelBottom - 2)
+      : Math.max(0, labelTop - item.anchorBottom - 2);
+    return {
+      ...item,
+      side,
+      level,
+      labelTop,
+      connectorTop,
+      connectorHeight,
+    };
+  });
+
+  const markerHtml = markerAnnotations.map(item => `
+        <div class="stats-boxplot-marker stats-boxplot-marker-${item.side}" style="left:${item.pct}%;top:${item.labelTop}px">
+          <span class="stats-boxplot-marker-label">${item.label}</span>
+          <strong class="stats-boxplot-marker-value">${item.value.toFixed(2)}</strong>
+        </div>
+        ${item.connectorHeight > 12 ? `<div class="stats-boxplot-connector" style="left:${item.pct}%;top:${item.connectorTop}px;height:${item.connectorHeight}px"></div>` : ""}
+      `).join("");
+
+  zone.innerHTML = `
+    <div class="stats-boxplot-card">
+      <div class="stats-boxplot-title">Histogramme des notes /20</div>
+      <div class="stats-histogram-wrap">
+        <div class="stats-histogram-axis"></div>
+        <div class="stats-histogram-ticks">${axisTicks}</div>
+        ${bars}
+        <div class="stats-plot-scale">
+          <span>0</span>
+          <span>5</span>
+          <span>10</span>
+          <span>15</span>
+          <span>20</span>
+        </div>
+      </div>
+    </div>
+    <div class="stats-boxplot-card">
+      <div class="stats-boxplot-title">Boîte à moustaches des notes /20</div>
+      <div class="stats-boxplot-wrap">
+        <div class="stats-boxplot-axis"></div>
+        <div class="stats-boxplot-whisker" style="left:${toPct(min)};width:calc(${toPct(max)} - ${toPct(min)})"></div>
+        <div class="stats-boxplot-cap" style="left:${toPct(min)}"></div>
+        <div class="stats-boxplot-cap" style="left:${toPct(max)}"></div>
+        <div class="stats-boxplot-box" style="left:${toPct(q1)};width:calc(${toPct(q3)} - ${toPct(q1)})"></div>
+        <div class="stats-boxplot-median" style="left:${toPct(med)}"></div>
+        <div class="stats-boxplot-mean" style="left:${toPct(moyenne)}"></div>
+        ${markerHtml}
+        <div class="stats-plot-scale stats-boxplot-scale">
+          <span>0</span>
+          <span>5</span>
+          <span>10</span>
+          <span>15</span>
+          <span>20</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadMailTemplates() {
+  const groupeId = document.getElementById("filtre-groupe-res").value;
+  const url = groupeId
+    ? `${API}/devoirs/${devoirId}/mail-template?groupe_id=${groupeId}`
+    : `${API}/devoirs/${devoirId}/mail-template`;
+
+  const payload = {
+    include_note_brute: document.getElementById("mail-opt-note-brute")?.checked ?? true,
+    include_note_sur_20: document.getElementById("mail-opt-note20")?.checked ?? true,
+    include_ajustements: document.getElementById("mail-opt-ajustements")?.checked ?? true,
+    include_classement: document.getElementById("mail-opt-classement")?.checked ?? true,
+    include_detail_correction: document.getElementById("mail-opt-detail")?.checked ?? true,
+    texte_libre_1: (document.getElementById("mail-texte-1")?.value || "").trim(),
+    texte_libre_2: (document.getElementById("mail-texte-2")?.value || "").trim(),
+    signature: (document.getElementById("mail-signature")?.value || "").trim() || "Votre enseignant",
+  };
+
+  let res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    // Compatibilité: fallback sur l'ancien endpoint GET si besoin.
+    res = await fetch(url);
+  }
+  mailTemplates = await res.json();
+
+  const zone = document.getElementById("mail-list-zone");
+  if (!mailTemplates.length) {
+    zone.innerHTML = "<p style='color:#888'>Aucun mail disponible pour ce filtre.</p>";
+    return;
+  }
+
+  const rows = mailTemplates.map((m, i) => {
+    const label = m.to || "(pas d'email)";
+    const rang = (m.classement_groupe == null)
+      ? "non classé"
+      : `${m.classement_groupe}/${m.nb_corrigees_groupe}`;
+    return `<label style="display:flex;align-items:center;gap:.6rem;padding:.35rem 0;border-bottom:1px solid #f0f0f0">
+      <input type="checkbox" class="mail-check" data-mail-index="${i}">
+      <span style="font-size:.9rem"><strong>${escHtml(label)}</strong> — ${escHtml(m.subject || "(sans objet)")} <span style="color:#666">(rang: ${escHtml(rang)})</span></span>
+    </label>`;
+  }).join("");
+
+  zone.innerHTML = `<div style="max-height:260px;overflow:auto">${rows}</div>`;
+}
+
+function selectAllMails(checked) {
+  document.querySelectorAll(".mail-check").forEach(cb => {
+    cb.checked = checked;
+  });
+}
+
+function buildMailtoLink(mail) {
+  const to = encodeURIComponent(mail.to || "");
+  const subject = encodeURIComponent(mail.subject || "");
+  const body = encodeURIComponent(mail.body || "");
+  return `mailto:${to}?subject=${subject}&body=${body}`;
+}
+
+function openSelectedMails() {
+  const selected = Array.from(document.querySelectorAll(".mail-check:checked"));
+  if (!selected.length) {
+    toast("Cocher au moins un élève");
+    return;
+  }
+
+  let blocked = 0;
+  selected.forEach((cb, idx) => {
+    const i = parseInt(cb.dataset.mailIndex, 10);
+    const mail = mailTemplates[i];
+    if (!mail) return;
+
+    setTimeout(() => {
+      const win = window.open(buildMailtoLink(mail), "_blank");
+      if (!win) blocked += 1;
+    }, idx * 120);
+  });
+
+  setTimeout(() => {
+    if (blocked > 0) {
+      toast(`${selected.length - blocked}/${selected.length} ouverts (popups bloqués: ${blocked})`, 2800);
+    } else {
+      toast(`${selected.length} mail(s) ouvert(s)`, 2200);
+    }
+  }, selected.length * 120 + 180);
+}
+
+async function onResultGroupChange() {
+  await loadResultats();
+  await loadMailTemplates();
+}
+
+/* ── Utilitaires ─────────────────────────────────────────────────────────── */
+
+function escHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+/* ── Init ────────────────────────────────────────────────────────────────── */
+async function init() {
+  initSyncNav({ afterPull: () => location.reload() });
+  switchTab("groupes");
+  await loadGroupesPourDevoir();
+  await loadDevoir();
+  await loadResultats();
+  await loadMailTemplates();
+}
+init();
+</script>
+</body>
+</html>

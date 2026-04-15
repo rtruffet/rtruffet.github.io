@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corrigator – Accueil</title>
+  <link rel="icon" type="image/png" href="corrigator_icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0d4ea0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <h1 class="brand">
+    <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
+  </h1>
+  <a href="index.html">Devoirs</a>
+  <a href="etudiants.html">Étudiants</a>
+  <div class="nav-sync-actions">
+    <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
+    <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
+    <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
+    <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+  </div>
+</nav>
+
+<main>
+
+  <!-- ── Créer un devoir ──────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Nouveau devoir</h2>
+    <div class="form-row">
+      <input type="text" id="devoir-titre" placeholder="Titre (ex: DS01)">
+      <input type="text" id="devoir-desc"  placeholder="Description (optionnel)">
+    </div>
+    <div class="form-row" style="align-items:center">
+      <label for="devoir-nb-exos" style="font-size:.9rem;color:#555">Nombre d'exercices</label>
+      <input type="number" id="devoir-nb-exos" min="1" step="1" value="1" style="max-width:120px">
+      <button class="btn btn-neutral" onclick="renderExosInputs()">Générer</button>
+    </div>
+    <div id="devoir-exos-builder" style="margin:.5rem 0 1rem 0"></div>
+    <div class="form-row">
+      <button class="btn btn-primary" onclick="createDevoirWithStructure()">Créer le devoir</button>
+    </div>
+  </div>
+
+  <!-- ── Liste des devoirs ────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Devoirs existants</h2>
+    <ul class="devoir-list" id="devoir-list">
+      <li style="color:#888">Chargement…</li>
+    </ul>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script src="local-api.js"></script>
+<script src="pwa-register.js"></script>
+<script>
+const API = "http://localhost:8000";
+let latestSyncStatus = null;
+
+function toast(msg, duration = 2000) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), duration);
+}
+
+function setSyncButtonsDisabled(disabled) {
+  const pullBtn = document.getElementById("sync-pull-btn");
+  const pushBtn = document.getElementById("sync-push-btn");
+  if (pullBtn) pullBtn.disabled = disabled;
+  if (pushBtn) pushBtn.disabled = disabled;
+}
+
+function fmtSize(size) {
+  if (size == null) return "?";
+  if (size < 1024) return `${size} o`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} Ko`;
+  return `${(size / (1024 * 1024)).toFixed(2)} Mo`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return "-";
+  try {
+    return new Date(iso).toLocaleString("fr-FR");
+  } catch (_err) {
+    return iso;
+  }
+}
+
+async function loadSyncStatus() {
+  const zone = document.getElementById("sync-status");
+  try {
+    const res = await fetch(`${API}/sync/status`);
+    if (!res.ok) throw new Error("status non disponible");
+    const s = await res.json();
+    latestSyncStatus = s;
+    const local = s.local;
+    const cloud = s.cloud;
+    const relationText = (() => {
+      switch (s.relation) {
+        case "in-sync": return "A jour";
+        case "local-newer": return "Local plus recent";
+        case "cloud-newer": return "Cloud plus recent";
+        case "missing-cloud": return "Cloud absent";
+        case "missing-local": return "Local absent";
+        case "both-missing": return "Aucune base";
+        default: return "Inconnu";
+      }
+    })();
+    zone.textContent = relationText;
+    zone.title = `Local: ${local ? `${fmtSize(local.size)} — ${fmtDate(local.mtimeIso)}` : "absent"}\nCloud: ${cloud ? `${fmtSize(cloud.size)} — ${fmtDate(cloud.mtimeIso)}` : "absent"}\nChemin cloud: ${s.cloud_path || "-"}`;
+  } catch (err) {
+    latestSyncStatus = null;
+    zone.textContent = "Erreur sync";
+    zone.title = err.message;
+  }
+}
+
+async function syncPush() {
+  if (!latestSyncStatus) await loadSyncStatus();
+  if (latestSyncStatus?.relation === "cloud-newer") {
+    const ok = confirm("La base cloud est plus recente. Push ecrasera cette version. Continuer ?");
+    if (!ok) return;
+  }
+
+  setSyncButtonsDisabled(true);
+  try {
+    let res = await fetch(`${API}/sync/push`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && data?.require_force) {
+      const confirmForce = confirm(`${data.detail}\n\nForcer le push quand meme ?`);
+      if (!confirmForce) {
+        await loadSyncStatus();
+        return;
+      }
+      res = await fetch(`${API}/sync/push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      });
+      const retryData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(retryData.detail || "push force impossible");
+    } else if (!res.ok) {
+      throw new Error(data.detail || "push impossible");
+    }
+
+    toast("Push terminé");
+    await loadSyncStatus();
+  } catch (err) {
+    toast(`Erreur push: ${err.message}`, 3200);
+  } finally {
+    setSyncButtonsDisabled(false);
+  }
+}
+
+async function syncPull() {
+  if (!latestSyncStatus) await loadSyncStatus();
+  if (!confirm("Pull va remplacer la base locale par la version cloud. Continuer ?")) return;
+  if (latestSyncStatus?.relation === "local-newer") {
+    const ok = confirm("La base locale est plus recente. Pull peut ecraser des donnees recentes. Continuer ?");
+    if (!ok) return;
+  }
+
+  setSyncButtonsDisabled(true);
+  try {
+    let res = await fetch(`${API}/sync/pull`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && data?.require_force) {
+      const confirmForce = confirm(`${data.detail}\n\nForcer le pull quand meme ?`);
+      if (!confirmForce) {
+        await loadSyncStatus();
+        return;
+      }
+      res = await fetch(`${API}/sync/pull`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      });
+      const retryData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(retryData.detail || "pull force impossible");
+    } else if (!res.ok) {
+      throw new Error(data.detail || "pull impossible");
+    }
+
+    toast("Pull terminé (base locale remplacée)", 2800);
+    await loadSyncStatus();
+    await loadDevoirs();
+  } catch (err) {
+    toast(`Erreur pull: ${err.message}`, 3500);
+  } finally {
+    setSyncButtonsDisabled(false);
+  }
+}
+
+/* ── Devoirs ─────────────────────────────────────────────────────────────── */
+
+async function loadDevoirs() {
+  const res = await fetch(`${API}/devoirs`);
+  const devoirs = await res.json();
+  const ul = document.getElementById("devoir-list");
+  ul.innerHTML = "";
+
+  if (devoirs.length === 0) {
+    ul.innerHTML = "<li style='color:#888'>Aucun devoir pour l'instant.</li>";
+    return;
+  }
+
+  for (const d of devoirs) {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <span class="devoir-title">${d.titre}</span>
+      <div style="display:flex;gap:.5rem">
+        <a href="devoir.html?id=${d.id}" class="btn btn-primary btn-sm">Gérer</a>
+        <a href="corriger.html?devoir=${d.id}" class="btn btn-success btn-sm">Corriger</a>
+        <button class="btn btn-danger btn-sm" onclick="deleteDevoir(${d.id})">✕</button>
+      </div>`;
+    ul.appendChild(li);
+  }
+}
+
+async function createDevoir() {
+  const titre = document.getElementById("devoir-titre").value.trim();
+  if (!titre) { toast("Entrer un titre"); return; }
+  const desc = document.getElementById("devoir-desc").value.trim();
+
+  const res = await fetch(`${API}/devoirs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ titre, description: desc || null }),
+  });
+  if (res.ok) {
+    document.getElementById("devoir-titre").value = "";
+    document.getElementById("devoir-desc").value = "";
+    toast("Devoir créé !");
+    await loadDevoirs();
+  } else {
+    toast("Erreur lors de la création");
+  }
+}
+
+function renderExosInputs() {
+  const nbExos = parseInt(document.getElementById("devoir-nb-exos").value, 10);
+  if (!Number.isInteger(nbExos) || nbExos < 1) {
+    toast("Le nombre d'exercices doit être >= 1");
+    return;
+  }
+
+  const builder = document.getElementById("devoir-exos-builder");
+  builder.innerHTML = "";
+
+  for (let i = 1; i <= nbExos; i++) {
+    const row = document.createElement("div");
+    row.className = "form-row";
+    row.style.marginBottom = ".45rem";
+    row.innerHTML = `
+      <strong style="min-width:90px;align-self:center">Exercice ${i}</strong>
+      <input type="text" id="exo-titre-${i}" placeholder="Titre (optionnel)" value="Exercice ${i}">
+      <input type="number" id="exo-nb-q-${i}" min="1" step="1" value="1" style="max-width:120px">
+      <span style="align-self:center;color:#666;font-size:.9rem">question(s)</span>
+    `;
+    builder.appendChild(row);
+  }
+}
+
+async function createDevoirWithStructure() {
+  const titre = document.getElementById("devoir-titre").value.trim();
+  if (!titre) { toast("Entrer un titre"); return; }
+
+  const nbExos = parseInt(document.getElementById("devoir-nb-exos").value, 10);
+  if (!Number.isInteger(nbExos) || nbExos < 1) {
+    toast("Le nombre d'exercices doit être >= 1");
+    return;
+  }
+
+  const structure = [];
+  for (let i = 1; i <= nbExos; i++) {
+    const titreExo = document.getElementById(`exo-titre-${i}`)?.value.trim() || `Exercice ${i}`;
+    const nbQ = parseInt(document.getElementById(`exo-nb-q-${i}`)?.value, 10);
+    if (!Number.isInteger(nbQ) || nbQ < 1) {
+      toast(`Exercice ${i}: nombre de questions invalide`);
+      return;
+    }
+    structure.push({ titreExo, nbQ, ordreExo: i - 1 });
+  }
+
+  const desc = document.getElementById("devoir-desc").value.trim();
+  const resDevoir = await fetch(`${API}/devoirs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ titre, description: desc || null }),
+  });
+
+  if (!resDevoir.ok) {
+    toast("Erreur lors de la création du devoir");
+    return;
+  }
+
+  const devoir = await resDevoir.json();
+
+  for (const exo of structure) {
+    const resExo = await fetch(`${API}/devoirs/${devoir.id}/exercices`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titre: exo.titreExo, ordre: exo.ordreExo }),
+    });
+
+    if (!resExo.ok) {
+      toast("Devoir créé, mais erreur sur les exercices");
+      await loadDevoirs();
+      return;
+    }
+
+    const exoCreated = await resExo.json();
+    for (let q = 1; q <= exo.nbQ; q++) {
+      await fetch(`${API}/exercices/${exoCreated.id}/questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enonce: `Question ${q}`,
+          poids: 1,
+          ordre: q - 1,
+        }),
+      });
+    }
+  }
+
+  document.getElementById("devoir-titre").value = "";
+  document.getElementById("devoir-desc").value = "";
+  document.getElementById("devoir-nb-exos").value = "1";
+  renderExosInputs();
+  toast("Devoir et structure créés !");
+  await loadDevoirs();
+}
+
+async function deleteDevoir(id) {
+  if (!confirm("Supprimer ce devoir et toutes ses notes ?")) return;
+  await fetch(`${API}/devoirs/${id}`, { method: "DELETE" });
+  await loadDevoirs();
+}
+
+/* ── Init ────────────────────────────────────────────────────────────────── */
+renderExosInputs();
+loadSyncStatus();
+loadDevoirs();
+</script>
+</body>
+</html>

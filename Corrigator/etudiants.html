@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corrigator – Étudiants</title>
+  <link rel="icon" type="image/png" href="corrigator_icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0d4ea0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <h1 class="brand">
+    <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
+  </h1>
+  <a href="index.html">Devoirs</a>
+  <a href="etudiants.html">Étudiants</a>
+  <div class="nav-sync-actions">
+    <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
+    <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
+    <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
+    <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+  </div>
+</nav>
+
+<main>
+
+  <!-- ── Groupes ─────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Groupes (classes)</h2>
+    <div class="form-row">
+      <input type="text" id="g-nom" placeholder="Nom du groupe (ex : MP2I-A)">
+      <button class="btn btn-primary" onclick="createGroupe()">Créer</button>
+    </div>
+    <ul class="etudiant-list" id="groupe-list" style="margin-top:.75rem">
+      <li style="color:#888">Chargement…</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Importer une classe</h2>
+    <div class="form-row">
+      <select id="import-groupe" style="flex:1;min-width:220px;padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px">
+        <option value="">-- Choisir un groupe --</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:.35rem;font-size:.9rem;color:#555">
+        <input type="checkbox" id="import-entete">
+        1re ligne = en-tête
+      </label>
+      <button class="btn btn-success" onclick="importClasse()">Importer</button>
+    </div>
+    <textarea id="import-contenu" placeholder="Format: prenom;nom;email&#10;Alice;Martin;alice@example.com&#10;Bob;Durand;" style="width:100%;min-height:130px;padding:.65rem .75rem;border:1px solid #ccc;border-radius:6px;background:#fafafa"></textarea>
+    <p style="margin-top:.5rem;color:#666;font-size:.85rem">Un élève par ligne, séparateur <strong>;</strong> (email optionnel).</p>
+  </div>
+
+  <!-- ── Ajouter un étudiant ──────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Ajouter un étudiant</h2>
+    <div class="form-row">
+      <input type="text"  id="e-prenom" placeholder="Prénom">
+      <input type="text"  id="e-nom"    placeholder="Nom">
+      <input type="email" id="e-email"  placeholder="Email (optionnel)">
+      <select id="e-groupe" style="flex:1;min-width:140px;padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px">
+        <option value="">-- Groupe (optionnel) --</option>
+      </select>
+      <button class="btn btn-primary" onclick="createEtudiant()">Ajouter</button>
+    </div>
+  </div>
+
+  <!-- ── Liste ────────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem">
+      <h2 style="margin:0">Liste des étudiants</h2>
+      <select id="filtre-groupe" onchange="loadEtudiants()"
+              style="padding:.4rem .75rem;border:1px solid #ccc;border-radius:6px">
+        <option value="">Tous les groupes</option>
+      </select>
+    </div>
+    <ul class="etudiant-list" id="etudiant-list">
+      <li style="color:#888">Chargement…</li>
+    </ul>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script src="local-api.js"></script>
+<script src="pwa-register.js"></script>
+<script src="sync-nav.js"></script>
+<script>
+const API = "http://localhost:8000";
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2000);
+}
+
+/* ── Groupes ─────────────────────────────────────────────────────────────── */
+
+async function loadGroupes() {
+  const res = await fetch(`${API}/groupes`);
+  const groupes = await res.json();
+
+  // Liste affichée
+  const ul = document.getElementById("groupe-list");
+  ul.innerHTML = "";
+  if (groupes.length === 0) {
+    ul.innerHTML = "<li style='color:#888'>Aucun groupe.</li>";
+  } else {
+    for (const g of groupes) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <span><strong>${g.nom}</strong>
+          <small style="color:#888">(${g.nb_etudiants} étudiant${g.nb_etudiants > 1 ? "s" : ""})</small>
+        </span>
+        <button class="btn btn-danger btn-sm" onclick="deleteGroupe(${g.id})">✕</button>`;
+      ul.appendChild(li);
+    }
+  }
+
+  // Alimentation des <select>
+  for (const selectId of ["e-groupe", "filtre-groupe", "import-groupe"]) {
+    const sel = document.getElementById(selectId);
+    const prev = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    for (const g of groupes) {
+      const opt = new Option(g.nom, g.id);
+      sel.appendChild(opt);
+    }
+    if (prev) sel.value = prev;
+  }
+}
+
+async function importClasse() {
+  const groupeId = document.getElementById("import-groupe").value;
+  const contenu = document.getElementById("import-contenu").value;
+  const entete = document.getElementById("import-entete").checked;
+  if (!groupeId) { toast("Choisir un groupe"); return; }
+  if (!contenu.trim()) { toast("Coller la liste des élèves"); return; }
+
+  const res = await fetch(`${API}/groupes/${groupeId}/import-etudiants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contenu, separateur: ";", entete }),
+  });
+
+  if (!res.ok) {
+    toast("Erreur d'import");
+    return;
+  }
+
+  const out = await res.json();
+  const msg = out.erreurs && out.erreurs.length
+    ? `Import: ${out.crees} créés, ${out.erreurs.length} erreurs`
+    : `Import réussi: ${out.crees} élèves`;
+  toast(msg, 2600);
+
+  if (out.erreurs && out.erreurs.length) {
+    alert(`Import partiel:\n\n${out.erreurs.join("\n")}`);
+  }
+
+  await loadGroupes();
+  await loadEtudiants();
+}
+
+async function createGroupe() {
+  const nom = document.getElementById("g-nom").value.trim();
+  if (!nom) { toast("Nom requis"); return; }
+  const res = await fetch(`${API}/groupes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nom }),
+  });
+  if (res.ok) {
+    document.getElementById("g-nom").value = "";
+    toast("Groupe créé !");
+    await loadGroupes();
+  } else {
+    toast("Erreur (nom déjà utilisé ?)");
+  }
+}
+
+async function deleteGroupe(id) {
+  if (!confirm("Supprimer ce groupe ? Les étudiants ne seront pas supprimés.")) return;
+  await fetch(`${API}/groupes/${id}`, { method: "DELETE" });
+  await loadGroupes();
+  await loadEtudiants();
+}
+
+/* ── Etudiants ───────────────────────────────────────────────────────────── */
+
+async function loadEtudiants() {
+  const groupeId = document.getElementById("filtre-groupe").value;
+  const url = groupeId ? `${API}/etudiants?groupe_id=${groupeId}` : `${API}/etudiants`;
+  const res = await fetch(url);
+  const etudiants = await res.json();
+  const ul = document.getElementById("etudiant-list");
+  ul.innerHTML = "";
+
+  if (etudiants.length === 0) {
+    ul.innerHTML = "<li style='color:#888'>Aucun étudiant.</li>";
+    return;
+  }
+
+  for (const e of etudiants) {
+    const badge = e.groupe_nom
+      ? `<span style="background:#e8eaf6;color:#3949ab;padding:.1rem .45rem;border-radius:4px;font-size:.78rem;margin-left:.5rem">${e.groupe_nom}</span>`
+      : "";
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <span>${e.nom} ${e.prenom}
+        ${e.email ? `<small style="color:#888">(${e.email})</small>` : ""}
+        ${badge}
+      </span>
+      <button class="btn btn-danger btn-sm" onclick="deleteEtudiant(${e.id})">✕</button>`;
+    ul.appendChild(li);
+  }
+}
+
+async function createEtudiant() {
+  const nom      = document.getElementById("e-nom").value.trim();
+  const prenom   = document.getElementById("e-prenom").value.trim();
+  const email    = document.getElementById("e-email").value.trim();
+  const groupeId = document.getElementById("e-groupe").value;
+  if (!nom || !prenom) { toast("Nom et prénom requis"); return; }
+
+  const res = await fetch(`${API}/etudiants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nom, prenom,
+      email: email || null,
+      groupe_id: groupeId ? parseInt(groupeId) : null,
+    }),
+  });
+  if (res.ok) {
+    document.getElementById("e-nom").value = "";
+    document.getElementById("e-prenom").value = "";
+    document.getElementById("e-email").value = "";
+    toast("Étudiant ajouté !");
+    await loadGroupes();
+    await loadEtudiants();
+  } else {
+    toast("Erreur");
+  }
+}
+
+async function deleteEtudiant(id) {
+  if (!confirm("Supprimer cet étudiant et toutes ses notes ?")) return;
+  await fetch(`${API}/etudiants/${id}`, { method: "DELETE" });
+  await loadGroupes();
+  await loadEtudiants();
+}
+
+/* ── Init ────────────────────────────────────────────────────────────────── */
+(async () => {
+  initSyncNav({ afterPull: () => location.reload() });
+  await loadGroupes();
+  await loadEtudiants();
+})();
+</script>
+</body>
+</html>

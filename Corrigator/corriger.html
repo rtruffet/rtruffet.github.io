@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corrigator – Correction</title>
+  <link rel="icon" type="image/png" href="corrigator_icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0d4ea0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <h1 class="brand">
+    <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
+  </h1>
+  <a href="index.html">Devoirs</a>
+  <a href="etudiants.html">Étudiants</a>
+  <a id="btn-retour-gestion" href="#" class="btn btn-neutral btn-sm">← Retour</a>
+  <div class="nav-correction-meta">
+    <span id="devoir-label" class="nav-devoir-chip">Chargement…</span>
+    <span id="corrigees-counter" class="nav-counter-chip">Copies corrigées : 0 / 0</span>
+  </div>
+  <div class="nav-correction-actions">
+    <button id="rapid-mode-btn" class="btn btn-neutral btn-sm" onclick="toggleRapidMode()">Ultra-rapide: OFF</button>
+    <button id="shortcuts-toggle-btn" class="btn btn-neutral btn-sm" onclick="toggleShortcutsPanel()">Raccourcis</button>
+  </div>
+  <div class="nav-sync-actions">
+    <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
+    <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
+    <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
+    <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+  </div>
+</nav>
+
+<div id="shortcuts-panel" class="card" style="display:none;max-width:900px;margin:1rem auto 0 auto;padding:.65rem .9rem;background:#f8fbff;border:1px solid #d9e7f7">
+  <div style="font-size:.85rem;color:#355070;display:flex;flex-wrap:wrap;gap:.8rem;align-items:center">
+    <strong>Raccourcis clavier :</strong>
+    <span>←/→ question</span>
+    <span>↑/↓ élève</span>
+    <span>0..9 = note 0.0..0.9</span>
+    <span>M = 1.0</span>
+    <span>X = pas répondue</span>
+    <span>Suppr / Retour arrière = pas encore corrigée</span>
+    <span>Alt+Q = menu questions</span>
+    <span>Alt+F = filtre élève</span>
+    <span>Alt+G = filtre groupe</span>
+    <span>Alt+A = focus auto ON/OFF</span>
+    <span>Tab/Shift+Tab = note/remarque</span>
+    <span>Entrée (dans remarque) = enregistrer</span>
+    <span>U = mode ultra-rapide</span>
+    <span>Échap = quitter le champ</span>
+  </div>
+</div>
+
+<main>
+  <!-- ── En-tête : navigation étudiants ─────────────────────────────────── -->
+  <div id="correction-header">
+    <div>
+      <h2 id="etudiant-name">—</h2>
+    </div>
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+      <select id="filtre-groupe" onchange="applyGroupeFilter()"
+              style="padding:.4rem .75rem;border:1px solid #ccc;border-radius:6px;font-size:.9rem">
+        <option value="">Tous les groupes affectés</option>
+      </select>
+      <input type="text" id="filtre-eleve" placeholder="Filtrer un élève (nom/prénom)"
+             oninput="applySearchFilter()"
+             style="padding:.4rem .75rem;border:1px solid #ccc;border-radius:6px;font-size:.9rem;min-width:240px">
+      <div class="etudiant-nav">
+        <button class="btn btn-neutral" onclick="prevEtudiant()">◀ Précédent</button>
+        <span id="etudiant-index" style="font-size:.85rem;color:#666"></span>
+        <button class="btn btn-neutral" onclick="nextEtudiant()">Suivant ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Barre de progression (questions) ───────────────────────────────── -->
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
+  </div>
+  <div style="font-size:.8rem;color:#888;margin-bottom:1rem;text-align:right">
+    Question <span id="q-current">0</span> / <span id="q-total">0</span>
+  </div>
+
+  <!-- ── Zone question ──────────────────────────────────────────────────── -->
+  <div class="card">
+    <div id="question-zone">
+      <div id="question-exo"></div>
+      <div id="question-enonce">Chargement du devoir…</div>
+      <div id="question-poids"></div>
+
+      <div id="note-buttons"></div>
+
+      <div id="question-nav">
+        <button class="btn btn-neutral" onclick="prevQuestion()">◀ Préc.</button>
+        <select id="question-select" onchange="jumpToQuestion()"
+                style="padding:.4rem .6rem;border:1px solid #ccc;border-radius:6px;background:#fff;min-width:210px">
+        </select>
+        <button class="btn btn-primary" onclick="nextQuestion()">Suiv. ▶</button>
+      </div>
+    </div>
+
+    <p id="finished-msg" style="display:none;text-align:center;color:#2e7d32;font-weight:700;font-size:1.1rem;padding:1rem 0">
+      ✅ Toutes les questions ont été notées pour cet étudiant !
+    </p>
+  </div>
+
+  <!-- ── Récapitulatif ──────────────────────────────────────────────────── -->
+  <div class="card" id="recap">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem">
+      <h2 style="margin:0">Récapitulatif <span id="recap-total" style="color:#1565c0"></span></h2>
+      <div id="recap-tabs" style="display:flex;gap:.35rem;flex-wrap:wrap">
+        <button id="recap-tab-eleve" class="btn btn-primary btn-sm" onclick="switchRecapTab('eleve')">Élève courant</button>
+        <button id="recap-tab-question" class="btn btn-neutral btn-sm" onclick="switchRecapTab('question')">Question courante (groupe)</button>
+      </div>
+    </div>
+    <div id="recap-body"></div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script src="local-api.js"></script>
+<script src="pwa-register.js"></script>
+<script src="sync-nav.js"></script>
+<script>
+const API    = "http://localhost:8000";
+const params = new URLSearchParams(location.search);
+const devoirId = params.get("devoir");
+
+if (!devoirId) location.href = "index.html";
+
+/* ── État global ─────────────────────────────────────────────────────────── */
+let etudiants   = [];  // liste complète des étudiants
+let etudiantIdx = 0;   // index courant dans `etudiants`
+let questions   = [];  // liste aplatie de toutes les questions du devoir
+let questionIdx = 0;   // index courant dans `questions`
+let notesMap    = {};  // { question_id: valeur } pour l'étudiant courant
+let commentairesMap = {}; // { question_id: remarque } pour l'étudiant courant
+let touchedQuestions = new Set(); // questions déjà corrigées, y compris X
+let devoirGroupes = [];
+let rapidMode = false;
+let autoFocusEnabled = true;
+let recapTabMode = "eleve";
+let recapRenderToken = 0;
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1500);
+}
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = (el.tagName || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
+}
+
+function isRemarkFocused() {
+  return document.activeElement && document.activeElement.id === "question-remarque";
+}
+
+function getNoteButtonForValue(value) {
+  return document.querySelector(`.note-btn[data-value="${value}"]`);
+}
+
+function getUnsetNoteButton() {
+  return document.querySelector('.note-btn[data-value="x"]');
+}
+
+function focusQuestionSelect() {
+  const sel = document.getElementById("question-select");
+  if (sel) sel.focus();
+}
+
+function focusStudentFilter() {
+  const input = document.getElementById("filtre-eleve");
+  if (input) input.focus();
+}
+
+function focusGroupFilter() {
+  const sel = document.getElementById("filtre-groupe");
+  if (sel) sel.focus();
+}
+
+function focusCurrentNoteButton(force = false) {
+  if (!force && !autoFocusEnabled) return;
+  const q = questions[questionIdx];
+  if (!q) return;
+  if (!touchedQuestions.has(q.id)) {
+    const first = getNoteButtonForValue(0);
+    if (first) first.focus();
+    return;
+  }
+  const val = notesMap[q.id];
+  if (val == null) {
+    const unsetBtn = getUnsetNoteButton();
+    if (unsetBtn) unsetBtn.focus();
+    return;
+  }
+  const btn = getNoteButtonForValue(val);
+  if (btn) btn.focus();
+}
+
+function focusRemarkField() {
+  const el = document.getElementById("question-remarque");
+  if (el) {
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }
+}
+
+function toggleRapidMode() {
+  rapidMode = !rapidMode;
+  const btn = document.getElementById("rapid-mode-btn");
+  if (btn) {
+    btn.textContent = `Ultra-rapide: ${rapidMode ? "ON" : "OFF"}`;
+    btn.classList.toggle("btn-success", rapidMode);
+    btn.classList.toggle("btn-neutral", !rapidMode);
+  }
+  toast(`Mode ultra-rapide ${rapidMode ? "activé" : "désactivé"}`);
+}
+
+function toggleAutoFocus() {
+  autoFocusEnabled = !autoFocusEnabled;
+  toast(`Focus automatique ${autoFocusEnabled ? "activé" : "désactivé"}`);
+}
+
+function toggleShortcutsPanel() {
+  const panel = document.getElementById("shortcuts-panel");
+  const btn = document.getElementById("shortcuts-toggle-btn");
+  if (!panel || !btn) return;
+
+  const show = panel.style.display === "none" || panel.style.display === "";
+  panel.style.display = show ? "block" : "none";
+  btn.textContent = show ? "Masquer raccourcis" : "Raccourcis";
+  btn.classList.toggle("btn-primary", show);
+  btn.classList.toggle("btn-neutral", !show);
+}
+
+function handleGlobalShortcuts(evt) {
+  const key = evt.key;
+  const typing = isTypingTarget(document.activeElement);
+
+  if (evt.altKey && key.toLowerCase() === "q") {
+    evt.preventDefault();
+    focusQuestionSelect();
+    return;
+  }
+  if (evt.altKey && key.toLowerCase() === "f") {
+    evt.preventDefault();
+    focusStudentFilter();
+    return;
+  }
+  if (evt.altKey && key.toLowerCase() === "g") {
+    evt.preventDefault();
+    focusGroupFilter();
+    return;
+  }
+  if (evt.altKey && key.toLowerCase() === "a") {
+    evt.preventDefault();
+    toggleAutoFocus();
+    return;
+  }
+
+  if (key.toLowerCase() === "u" && !typing) {
+    evt.preventDefault();
+    toggleRapidMode();
+    return;
+  }
+
+  // Entrée dans le champ remarque : enregistrer rapidement.
+  if (key === "Enter" && isRemarkFocused()) {
+    evt.preventDefault();
+    saveCommentaireCourant();
+    return;
+  }
+
+  // Shift+Tab dans la remarque : revenir aux notes.
+  if (key === "Tab" && evt.shiftKey && isRemarkFocused()) {
+    evt.preventDefault();
+    focusCurrentNoteButton(true);
+    return;
+  }
+
+  if (typing) {
+    if (key === "Escape") {
+      evt.preventDefault();
+      document.activeElement.blur();
+      focusCurrentNoteButton();
+    }
+    return;
+  }
+
+  // Tab depuis les notes/navigation : aller à la remarque.
+  if (key === "Tab" && !evt.shiftKey) {
+    evt.preventDefault();
+    focusRemarkField();
+    return;
+  }
+
+  // Shift+Tab hors champ: rester centré sur la zone notes.
+  if (key === "Tab" && evt.shiftKey) {
+    evt.preventDefault();
+    focusCurrentNoteButton();
+    return;
+  }
+
+  if (key === "ArrowLeft") {
+    evt.preventDefault();
+    prevQuestion();
+    focusCurrentNoteButton();
+    return;
+  }
+  if (key === "ArrowRight") {
+    evt.preventDefault();
+    nextQuestion();
+    focusCurrentNoteButton();
+    return;
+  }
+  if (key === "ArrowUp") {
+    evt.preventDefault();
+    prevEtudiant();
+    return;
+  }
+  if (key === "ArrowDown") {
+    evt.preventDefault();
+    nextEtudiant();
+    return;
+  }
+  if (/^[0-9]$/.test(key)) {
+    evt.preventDefault();
+    const val = Number(key) / 10;
+    const btn = getNoteButtonForValue(val);
+    if (btn) setNote(val, btn);
+    return;
+  }
+  if (key.toLowerCase() === "m") {
+    evt.preventDefault();
+    const btn = getNoteButtonForValue(1);
+    if (btn) setNote(1, btn);
+    return;
+  }
+  if (key.toLowerCase() === "x") {
+    evt.preventDefault();
+    const btn = getUnsetNoteButton();
+    setNote(null, btn || null);
+    return;
+  }
+  if (key === "Delete" || key === "Backspace") {
+    evt.preventDefault();
+    clearCurrentNote();
+  }
+}
+
+/* ── Groupes ─────────────────────────────────────────────────────────────── */
+
+async function loadGroupesFilter() {
+  const resDevoir = await fetch(`${API}/devoirs/${devoirId}`);
+  if (!resDevoir.ok) return;
+  const devoir = await resDevoir.json();
+  devoirGroupes = devoir.groupes || [];
+
+  const sel = document.getElementById("filtre-groupe");
+  while (sel.options.length > 1) sel.remove(1);
+  for (const g of devoirGroupes) sel.appendChild(new Option(g.nom, g.id));
+
+  // S'il n'y a qu'un groupe affecté, on le sélectionne automatiquement
+  if (devoirGroupes.length === 1) {
+    sel.value = String(devoirGroupes[0].id);
+  }
+
+  // Pré-sélection depuis l'URL
+  const gParam = params.get("groupe");
+  if (gParam) sel.value = gParam;
+}
+
+async function applyGroupeFilter() {
+  const groupeId = document.getElementById("filtre-groupe").value;
+  const url = new URL(location.href);
+  if (groupeId) url.searchParams.set("groupe", groupeId);
+  else url.searchParams.delete("groupe");
+  url.searchParams.delete("etudiant");
+  history.replaceState(null, "", url.toString());
+  etudiantIdx = 0;
+  await reloadEtudiants();
+}
+
+async function reloadEtudiants(focusNotes = true) {
+  const groupeId = document.getElementById("filtre-groupe").value;
+  const recherche = (document.getElementById("filtre-eleve").value || "").trim();
+  const url = new URL(`${API}/devoirs/${devoirId}/etudiants`);
+  if (groupeId) url.searchParams.set("groupe_id", groupeId);
+  if (recherche) url.searchParams.set("recherche", recherche);
+  const resE = await fetch(url);
+  etudiants = await resE.json();
+  if (etudiants.length === 0) {
+    document.getElementById("etudiant-name").textContent = "Aucun élève trouvé";
+    document.getElementById("etudiant-index").textContent = "";
+    document.getElementById("corrigees-counter").textContent = "Copies corrigées : 0 / 0";
+    document.getElementById("question-zone").style.display = "none";
+    document.getElementById("finished-msg").style.display = "none";
+    return false;
+  }
+  await refreshCorrigeesCounter();
+  await loadEtudiant(focusNotes);
+  return true;
+}
+
+async function refreshCorrigeesCounter() {
+  const groupeId = document.getElementById("filtre-groupe").value;
+  const url = groupeId
+    ? `${API}/devoirs/${devoirId}/resultats?groupe_id=${groupeId}`
+    : `${API}/devoirs/${devoirId}/resultats`;
+  const res = await fetch(url);
+  const resultats = await res.json();
+  const total = resultats.length;
+  const corrigees = resultats.filter(r => r.copie_corrigee).length;
+  document.getElementById("corrigees-counter").textContent = `Copies corrigées : ${corrigees} / ${total}`;
+}
+
+async function applySearchFilter() {
+  const input = document.getElementById("filtre-eleve");
+  const caret = input ? input.selectionStart : null;
+  etudiantIdx = 0;
+  await reloadEtudiants(false);
+  if (input) {
+    input.focus();
+    const pos = caret == null ? input.value.length : Math.min(caret, input.value.length);
+    input.setSelectionRange(pos, pos);
+  }
+}
+
+/* ── Chargement initial ──────────────────────────────────────────────────── */
+async function init() {
+  window.addEventListener("keydown", handleGlobalShortcuts);
+
+  // Chargement du devoir (structure)
+  const resD = await fetch(`${API}/devoirs/${devoirId}`);
+  if (!resD.ok) { location.href = "index.html"; return; }
+  const devoir = await resD.json();
+
+  document.getElementById("devoir-label").textContent = devoir.titre;
+  document.title = `Correction – ${devoir.titre}`;
+  document.getElementById("btn-retour-gestion").href = `devoir.html?id=${devoirId}`;
+
+  // Aplatissement des questions dans l'ordre exercice > question
+  questions = [];
+  for (const ex of devoir.exercices) {
+    for (const q of ex.questions) {
+      questions.push({ ...q, exo_titre: ex.titre });
+    }
+  }
+  document.getElementById("q-total").textContent = questions.length;
+  refreshQuestionSelect();
+
+  // Chargement des groupes dans le sélecteur
+  await loadGroupesFilter();
+
+  if (!devoir.groupes || devoir.groupes.length === 0) {
+    document.getElementById("etudiant-name").textContent = "Aucun groupe affecté à ce devoir";
+    document.getElementById("etudiant-index").textContent = "";
+    document.getElementById("corrigees-counter").textContent = "Copies corrigées : 0 / 0";
+    document.getElementById("question-zone").style.display = "none";
+    return;
+  }
+
+  // Chargement des étudiants du devoir (groupes affectés)
+  await reloadEtudiants();
+
+  // Lecture du paramètre étudiant si présent
+  const eidParam = parseInt(params.get("etudiant"));
+  if (eidParam) {
+    const idx = etudiants.findIndex(e => e.id === eidParam);
+    if (idx >= 0) etudiantIdx = idx;
+  }
+
+  if (etudiants.length > 0) {
+    await loadEtudiant();
+    focusCurrentNoteButton();
+  }
+}
+
+/* ── Chargement des notes d'un étudiant ──────────────────────────────────── */
+async function loadEtudiant(focusNotes = true) {
+  const etudiant = etudiants[etudiantIdx];
+  document.getElementById("etudiant-name").textContent =
+    `${etudiant.prenom} ${etudiant.nom}`;
+  document.getElementById("etudiant-index").textContent =
+    `${etudiantIdx + 1} / ${etudiants.length}`;
+
+  // Mise à jour de l'URL sans rechargement
+  const url = new URL(location.href);
+  url.searchParams.set("etudiant", etudiant.id);
+  history.replaceState(null, "", url.toString());
+
+  // Chargement des notes existantes
+  const res = await fetch(`${API}/notes/${etudiant.id}/devoir/${devoirId}`);
+  const notes = await res.json();
+  notesMap = {};
+  commentairesMap = {};
+  touchedQuestions = new Set();
+  for (const n of notes) {
+    touchedQuestions.add(n.question_id);
+    notesMap[n.question_id] = n.valeur;
+    commentairesMap[n.question_id] = n.commentaire || "";
+  }
+
+  questionIdx = 0;
+  renderQuestion();
+  renderRecap();
+  if (focusNotes) focusCurrentNoteButton();
+}
+
+/* ── Affichage d'une question ────────────────────────────────────────────── */
+function renderQuestion() {
+  const finMsg = document.getElementById("finished-msg");
+  const qZone  = document.getElementById("question-zone");
+
+  if (questions.length === 0) {
+    document.getElementById("question-enonce").textContent =
+      "Ce devoir n'a pas encore de questions. Allez le configurer !";
+    document.getElementById("note-buttons").innerHTML = "";
+    return;
+  }
+
+  const q = questions[questionIdx];
+  const pct = Math.round(((questionIdx + 1) / questions.length) * 100);
+  document.getElementById("progress-bar").style.width = pct + "%";
+  document.getElementById("q-current").textContent = questionIdx + 1;
+
+  document.getElementById("question-exo").textContent    = q.exo_titre;
+  document.getElementById("question-enonce").textContent = q.enonce;
+  document.getElementById("question-poids").textContent  = `${q.poids} point${q.poids > 1 ? "s" : ""}`;
+  document.getElementById("question-select").value = String(questionIdx);
+
+  finMsg.style.display = "none";
+  qZone.style.display  = "";
+
+  // Boutons 0, 0.1, ..., 1
+  const container = document.getElementById("note-buttons");
+  container.innerHTML = "";
+
+  const unsetBtn = document.createElement("button");
+  unsetBtn.className = "note-btn";
+  unsetBtn.dataset.value = "x";
+  unsetBtn.textContent = "X";
+  if (touchedQuestions.has(q.id) && notesMap[q.id] == null) unsetBtn.classList.add("selected");
+  unsetBtn.setAttribute("aria-label", "Marquer question non répondue");
+  unsetBtn.onclick = () => setNote(null, unsetBtn);
+  container.appendChild(unsetBtn);
+
+  for (let v = 0; v <= 10; v++) {
+    const val   = v / 10;
+    const label = val === 0 ? "0" : val === 1 ? "1" : val.toFixed(1);
+    const btn   = document.createElement("button");
+    btn.className = "note-btn";
+    btn.dataset.value = String(val);
+    btn.textContent = label;
+    if (notesMap[q.id] === val) btn.classList.add("selected");
+    btn.setAttribute("aria-label", `Mettre ${label} sur 1`);
+    btn.onclick = () => setNote(val, btn);
+    container.appendChild(btn);
+  }
+
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "btn btn-neutral";
+  clearBtn.textContent = "Effacer";
+  clearBtn.style.marginLeft = ".5rem";
+  clearBtn.setAttribute("aria-label", "Remettre la question à pas encore corrigée");
+  clearBtn.onclick = () => clearCurrentNote();
+  container.appendChild(clearBtn);
+
+  const oldWrap = document.getElementById("question-remarque-wrap");
+  if (oldWrap) oldWrap.remove();
+
+  const wrap = document.createElement("div");
+  wrap.id = "question-remarque-wrap";
+  wrap.style.cssText = "margin-top:1rem;max-width:720px;margin-left:auto;margin-right:auto;text-align:left";
+  const value = commentairesMap[q.id] || "";
+  wrap.innerHTML = `
+    <label for="question-remarque" style="display:block;font-size:.9rem;color:#555;margin-bottom:.35rem">Remarque pour cette question</label>
+    <textarea id="question-remarque" placeholder="Remarque visible dans le mail de l'élève"
+      style="width:100%;min-height:82px;padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px;background:#fafafa">${escHtml(value)}</textarea>
+    <div style="margin-top:.45rem;display:flex;justify-content:flex-end">
+      <button class="btn btn-neutral btn-sm" onclick="saveCommentaireCourant()">Enregistrer la remarque</button>
+    </div>
+  `;
+  container.after(wrap);
+}
+
+function refreshQuestionSelect() {
+  const sel = document.getElementById("question-select");
+  if (!sel) return;
+  sel.innerHTML = "";
+
+  let currentExo = null;
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+
+    if (q.exo_titre !== currentExo) {
+      currentExo = q.exo_titre;
+      const header = document.createElement("option");
+      header.disabled = true;
+      header.textContent = currentExo;
+      sel.appendChild(header);
+    }
+
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = `\u00A0\u00A0\u00A0${q.enonce || `Question ${q.ordre + 1}`}`;
+    sel.appendChild(opt);
+  }
+  sel.value = String(questionIdx);
+}
+
+function jumpToQuestion() {
+  const idx = parseInt(document.getElementById("question-select").value, 10);
+  if (Number.isNaN(idx)) return;
+  questionIdx = Math.max(0, Math.min(questions.length - 1, idx));
+  renderQuestion();
+  renderRecap();
+  focusCurrentNoteButton();
+}
+
+/* ── Saisie d'une note ───────────────────────────────────────────────────── */
+async function setNote(val, btnEl = null) {
+  const q        = questions[questionIdx];
+  const etudiant = etudiants[etudiantIdx];
+  const commentaire = document.getElementById("question-remarque")?.value?.trim() || "";
+
+  // Mise à jour optimiste
+  touchedQuestions.add(q.id);
+  notesMap[q.id] = val;
+  commentairesMap[q.id] = commentaire;
+  document.querySelectorAll(".note-btn").forEach(b => b.classList.remove("selected"));
+  const effectiveBtn = btnEl || getNoteButtonForValue(val);
+  if (effectiveBtn) effectiveBtn.classList.add("selected");
+
+  // Sauvegarde en base
+  await fetch(`${API}/notes/${etudiant.id}/${q.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valeur: val, commentaire }),
+  });
+
+  toast("✔ Noté");
+  refreshCorrigeesCounter();
+  renderRecap();
+
+  // Passage automatique à la question suivante après une courte pause
+  const transitionDelay = rapidMode ? 0 : 100;
+  setTimeout(() => {
+    if (questionIdx < questions.length - 1) {
+      questionIdx++;
+      renderQuestion();
+      focusCurrentNoteButton();
+    } else {
+      // Toutes les questions ont été notées
+      document.getElementById("question-zone").style.display = "none";
+      document.getElementById("finished-msg").style.display  = "";
+    }
+  }, transitionDelay);
+}
+
+async function clearCurrentNote() {
+  if (!etudiants.length || !questions.length) return;
+  const q = questions[questionIdx];
+  const etudiant = etudiants[etudiantIdx];
+
+  delete notesMap[q.id];
+  delete commentairesMap[q.id];
+  touchedQuestions.delete(q.id);
+
+  const res = await fetch(`${API}/notes/${etudiant.id}/${q.id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 404) {
+    toast("Erreur suppression note");
+    return;
+  }
+
+  toast("Note effacée");
+  renderQuestion();
+  renderRecap();
+  await refreshCorrigeesCounter();
+  focusCurrentNoteButton();
+}
+
+async function saveCommentaireCourant() {
+  if (!etudiants.length || !questions.length) return;
+  const q = questions[questionIdx];
+  const etudiant = etudiants[etudiantIdx];
+  const commentaire = document.getElementById("question-remarque")?.value?.trim() || "";
+
+  if (!touchedQuestions.has(q.id)) {
+    toast("Aucune correction à enregistrer pour cette question");
+    return;
+  }
+
+  const valeurCourante = notesMap[q.id] ?? null;
+
+  commentairesMap[q.id] = commentaire;
+  await fetch(`${API}/notes/${etudiant.id}/${q.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valeur: valeurCourante, commentaire }),
+  });
+  toast("Remarque enregistrée");
+}
+
+/* ── Navigation questions ────────────────────────────────────────────────── */
+function prevQuestion() {
+  if (questionIdx > 0) { questionIdx--; renderQuestion(); renderRecap(); focusCurrentNoteButton(); }
+}
+function nextQuestion() {
+  if (questionIdx < questions.length - 1) { questionIdx++; renderQuestion(); renderRecap(); focusCurrentNoteButton(); }
+}
+
+/* ── Navigation étudiants ────────────────────────────────────────────────── */
+async function prevEtudiant() {
+  if (etudiantIdx > 0) { etudiantIdx--; await loadEtudiant(); }
+}
+async function nextEtudiant() {
+  if (etudiantIdx < etudiants.length - 1) { etudiantIdx++; await loadEtudiant(); }
+}
+
+/* ── Récapitulatif ───────────────────────────────────────────────────────── */
+function switchRecapTab(mode) {
+  recapTabMode = mode === "question" ? "question" : "eleve";
+  renderRecap();
+}
+
+function updateRecapTabsUI() {
+  const eleveBtn = document.getElementById("recap-tab-eleve");
+  const questionBtn = document.getElementById("recap-tab-question");
+  if (!eleveBtn || !questionBtn) return;
+  const isEleve = recapTabMode === "eleve";
+  eleveBtn.classList.toggle("btn-primary", isEleve);
+  eleveBtn.classList.toggle("btn-neutral", !isEleve);
+  questionBtn.classList.toggle("btn-primary", !isEleve);
+  questionBtn.classList.toggle("btn-neutral", isEleve);
+}
+
+function recapNoteCellStyle(touched, val) {
+  if (!touched) return "";
+  if (val == null) return "background:#888888;color:#232a33;font-weight:700";
+  const ratio = Math.max(0, Math.min(1, val));
+  let hue;
+  if (ratio < 0.5) {
+    hue = ratio * 80;
+  } else {
+    hue = 40 + (ratio - 0.5) * 220;
+  }
+  hue = Math.round(hue);
+  const textColor = "#1a1a2e";
+  return `background:hsl(${hue}, 100%, 45%);color:${textColor};font-weight:700`;
+}
+
+function renderRecapEleve() {
+  const body = document.getElementById("recap-body");
+  if (questions.length === 0) { body.innerHTML = ""; return; }
+
+  let total      = 0;
+  let poidsTotal = 0;
+  let rows       = "";
+
+  for (const q of questions) {
+    const touched = touchedQuestions.has(q.id);
+    const val  = notesMap[q.id];
+    const comm = commentairesMap[q.id] || "";
+    const pts  = (val != null) ? (val * q.poids).toFixed(2) : (touched ? "0.00" : "—");
+    const affv = (val != null) ? val.toFixed(1) : (touched ? "X" : "—");
+    const noteCellStyle = recapNoteCellStyle(touched, val);
+    total      += (val != null) ? val * q.poids : 0;
+    poidsTotal += q.poids;
+
+    rows += `<tr>
+      <td style="padding:.3rem .75rem;border-bottom:1px solid #f0f0f0">${escHtml(q.enonce)}</td>
+      <td style="padding:.3rem .75rem;border-bottom:1px solid #f0f0f0;text-align:center;${noteCellStyle}">${affv}</td>
+      <td style="padding:.3rem .75rem;border-bottom:1px solid #f0f0f0;text-align:center">${pts} / ${q.poids}</td>
+      <td style="padding:.3rem .75rem;border-bottom:1px solid #f0f0f0;color:#666">${escHtml(comm)}</td>
+    </tr>`;
+  }
+
+  body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.9rem">
+    <thead><tr>
+      <th style="text-align:left;padding:.3rem .75rem;background:#f5f7fa">Question</th>
+      <th style="text-align:center;padding:.3rem .75rem;background:#f5f7fa">Note /1</th>
+      <th style="text-align:center;padding:.3rem .75rem;background:#f5f7fa">Points</th>
+      <th style="text-align:left;padding:.3rem .75rem;background:#f5f7fa">Remarque</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  document.getElementById("recap-total").textContent =
+    `Total : ${total.toFixed(2)} / ${poidsTotal.toFixed(2)}`;
+}
+
+async function renderRecapQuestion() {
+  const body = document.getElementById("recap-body");
+  const q = questions[questionIdx];
+  if (!q) {
+    body.innerHTML = "";
+    document.getElementById("recap-total").textContent = "";
+    return;
+  }
+
+  const token = ++recapRenderToken;
+  body.innerHTML = "<p style='color:#888'>Chargement des données du groupe…</p>";
+
+  const groupeId = document.getElementById("filtre-groupe")?.value || "";
+  const url = groupeId
+    ? `${API}/devoirs/${devoirId}/resultats?groupe_id=${groupeId}`
+    : `${API}/devoirs/${devoirId}/resultats`;
+
+  try {
+    const res = await fetch(url);
+    const resultats = await res.json();
+    if (token !== recapRenderToken || recapTabMode !== "question") return;
+
+    let corrigees = 0;
+    let totalEleves = resultats.length;
+    let rows = "";
+
+    for (const r of resultats) {
+      const nom = `${r.etudiant.prenom} ${r.etudiant.nom}`;
+      const noteObj = (r.notes || []).find(n => n.question_id === q.id);
+      const touched = noteObj !== undefined;
+      const val = touched ? noteObj.valeur : null;
+      const comm = touched ? (noteObj.commentaire || "") : "";
+      const pts = (val != null) ? (val * q.poids).toFixed(2) : (touched ? "0.00" : "—");
+      const affv = (val != null) ? Number(val).toFixed(1) : (touched ? "X" : "—");
+      if (touched) corrigees += 1;
+      const noteCellStyle = recapNoteCellStyle(touched, val);
+
+      rows += `<tr>
+        <td style="padding:.3rem .75rem;border-bottom:1px solid #f0f0f0">${escHtml(nom)}</td>
+        <td style="padding:.3rem .75rem;border-bottom:1px solid #f0f0f0;text-align:center;${noteCellStyle}">${affv}</td>
+        <td style="padding:.3rem .75rem;border-bottom:1px solid #f0f0f0;text-align:center">${pts} / ${q.poids}</td>
+        <td style="padding:.3rem .75rem;border-bottom:1px solid #f0f0f0;color:#666">${escHtml(comm)}</td>
+      </tr>`;
+    }
+
+    body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.9rem">
+      <thead><tr>
+        <th style="text-align:left;padding:.3rem .75rem;background:#f5f7fa">Élève</th>
+        <th style="text-align:center;padding:.3rem .75rem;background:#f5f7fa">Note /1</th>
+        <th style="text-align:center;padding:.3rem .75rem;background:#f5f7fa">Points</th>
+        <th style="text-align:left;padding:.3rem .75rem;background:#f5f7fa">Remarque</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+    document.getElementById("recap-total").textContent =
+      `Q${questionIdx + 1} : ${corrigees} / ${totalEleves} corrigées`;
+  } catch (_err) {
+    if (token !== recapRenderToken || recapTabMode !== "question") return;
+    body.innerHTML = "<p style='color:#b00020'>Erreur de chargement du récapitulatif question.</p>";
+    document.getElementById("recap-total").textContent = "";
+  }
+}
+
+function renderRecap() {
+  updateRecapTabsUI();
+  if (recapTabMode === "question") {
+    renderRecapQuestion();
+    return;
+  }
+  renderRecapEleve();
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+/* ── Init ────────────────────────────────────────────────────────────────── */
+initSyncNav({ afterPull: () => location.reload() });
+init();
+</script>
+</body>
+</html>

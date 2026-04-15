@@ -1,0 +1,18 @@
+{
+  "name": "Corrigator",
+  "short_name": "Corrigator",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1f3b",
+  "theme_color": "#0d4ea0",
+  "lang": "fr",
+  "description": "Correction de copies en mode offline",
+  "icons": [
+    {
+      "src": "./corrigator_icon.png",
+      "sizes": "378x530",
+      "type": "image/png"
+    }
+  ]
+}
