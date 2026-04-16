@@ -12,19 +12,43 @@
 <body>
 
 <nav>
-  <h1 class="brand">
-    <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
-  </h1>
-  <a href="index.html">Devoirs</a>
-  <a href="etudiants.html">Étudiants</a>
-  <div class="nav-devoir-title" id="devoir-titre">Chargement…</div>
-  <div class="nav-sync-actions">
-    <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
-    <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
-    <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
-    <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+  <div class="nav-brand-row">
+    <h1 class="brand">
+      <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
+    </h1>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
+  </div>
+  <div class="nav-collapse" id="nav-collapse">
+    <a href="index.html">Devoirs</a>
+    <a href="etudiants.html">Étudiants</a>
+    <div class="nav-devoir-title" id="devoir-titre">Chargement…</div>
+    <div class="nav-sync-actions">
+      <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
+      <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
+      <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
+      <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+    </div>
   </div>
 </nav>
+<script>
+(function(){
+  var toggle=document.getElementById('nav-toggle');
+  var nav=toggle&&toggle.closest('nav');
+  if(!toggle||!nav)return;
+  toggle.addEventListener('click',function(){
+    var open=nav.classList.toggle('nav-open');
+    toggle.setAttribute('aria-expanded',open);
+    toggle.textContent=open?'✕':'☰';
+  });
+  document.querySelectorAll('#nav-collapse a').forEach(function(a){
+    a.addEventListener('click',function(){
+      nav.classList.remove('nav-open');
+      toggle.textContent='☰';
+      toggle.setAttribute('aria-expanded','false');
+    });
+  });
+})();
+</script>
 
 <main>
 

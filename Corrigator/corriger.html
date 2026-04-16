@@ -12,27 +12,52 @@
 <body>
 
 <nav>
-  <h1 class="brand">
-    <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
-  </h1>
-  <a href="index.html">Devoirs</a>
-  <a href="etudiants.html">Étudiants</a>
-  <a id="btn-retour-gestion" href="#" class="btn btn-neutral btn-sm">← Retour</a>
-  <div class="nav-correction-meta">
-    <span id="devoir-label" class="nav-devoir-chip">Chargement…</span>
-    <span id="corrigees-counter" class="nav-counter-chip">Copies corrigées : 0 / 0</span>
+  <div class="nav-brand-row">
+    <h1 class="brand">
+      <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
+    </h1>
+    <!-- Toujours visible sur mobile : devoir + compteur -->
+    <div class="nav-correction-meta">
+      <span id="devoir-label" class="nav-devoir-chip">Chargement…</span>
+      <span id="corrigees-counter" class="nav-counter-chip">0 / 0</span>
+    </div>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
   </div>
-  <div class="nav-correction-actions">
-    <button id="rapid-mode-btn" class="btn btn-neutral btn-sm" onclick="toggleRapidMode()">Ultra-rapide: OFF</button>
-    <button id="shortcuts-toggle-btn" class="btn btn-neutral btn-sm" onclick="toggleShortcutsPanel()">Raccourcis</button>
-  </div>
-  <div class="nav-sync-actions">
-    <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
-    <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
-    <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
-    <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+  <div class="nav-collapse" id="nav-collapse">
+    <a href="index.html">Devoirs</a>
+    <a href="etudiants.html">Étudiants</a>
+    <a id="btn-retour-gestion" href="#" class="btn btn-neutral btn-sm">← Retour</a>
+    <div class="nav-correction-actions">
+      <button id="rapid-mode-btn" class="btn btn-neutral btn-sm" onclick="toggleRapidMode()">Ultra-rapide: OFF</button>
+      <button id="shortcuts-toggle-btn" class="btn btn-neutral btn-sm" onclick="toggleShortcutsPanel()">Raccourcis</button>
+    </div>
+    <div class="nav-sync-actions">
+      <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
+      <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
+      <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
+      <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+    </div>
   </div>
 </nav>
+<script>
+(function(){
+  var toggle=document.getElementById('nav-toggle');
+  var nav=toggle&&toggle.closest('nav');
+  if(!toggle||!nav)return;
+  toggle.addEventListener('click',function(){
+    var open=nav.classList.toggle('nav-open');
+    toggle.setAttribute('aria-expanded',open);
+    toggle.textContent=open?'✕':'☰';
+  });
+  document.querySelectorAll('#nav-collapse a').forEach(function(a){
+    a.addEventListener('click',function(){
+      nav.classList.remove('nav-open');
+      toggle.textContent='☰';
+      toggle.setAttribute('aria-expanded','false');
+    });
+  });
+})();
+</script>
 
 <div id="shortcuts-panel" class="card" style="display:none;max-width:900px;margin:1rem auto 0 auto;padding:.65rem .9rem;background:#f8fbff;border:1px solid #d9e7f7">
   <div style="font-size:.85rem;color:#355070;display:flex;flex-wrap:wrap;gap:.8rem;align-items:center">
