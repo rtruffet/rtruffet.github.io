@@ -788,7 +788,7 @@ function renderRecapEleve() {
     </tr>`;
   }
 
-  body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.9rem">
+  body.innerHTML = `<div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:.9rem;min-width:640px">
     <thead><tr>
       <th style="text-align:left;padding:.3rem .75rem;background:#f5f7fa">Question</th>
       <th style="text-align:center;padding:.3rem .75rem;background:#f5f7fa">Note /1</th>
@@ -796,7 +796,7 @@ function renderRecapEleve() {
       <th style="text-align:left;padding:.3rem .75rem;background:#f5f7fa">Remarque</th>
     </tr></thead>
     <tbody>${rows}</tbody>
-  </table>`;
+  </table></div>`;
 
   document.getElementById("recap-total").textContent =
     `Total : ${total.toFixed(2)} / ${poidsTotal.toFixed(2)}`;
@@ -847,7 +847,7 @@ async function renderRecapQuestion() {
       </tr>`;
     }
 
-    body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.9rem">
+    body.innerHTML = `<div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:.9rem;min-width:640px">
       <thead><tr>
         <th style="text-align:left;padding:.3rem .75rem;background:#f5f7fa">Élève</th>
         <th style="text-align:center;padding:.3rem .75rem;background:#f5f7fa">Note /1</th>
@@ -855,7 +855,7 @@ async function renderRecapQuestion() {
         <th style="text-align:left;padding:.3rem .75rem;background:#f5f7fa">Remarque</th>
       </tr></thead>
       <tbody>${rows}</tbody>
-    </table>`;
+    </table></div>`;
 
     document.getElementById("recap-total").textContent =
       `Q${questionIdx + 1} : ${corrigees} / ${totalEleves} corrigées`;

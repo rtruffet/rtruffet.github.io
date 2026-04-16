@@ -9,6 +9,10 @@
     --font-family-heading: 'Georgia', serif; /* Pour un aspect plus classique et professionnel */
 }
 
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
 /* --- Base --- */
 body {
     font-family: var(--font-family-main);
@@ -20,10 +24,19 @@ body {
 }
 
 .container {
-    width: 90%;
+    width: min(92%, 960px);
     max-width: 960px; /* Limite la largeur pour une meilleure lisibilité */
     margin: 0 auto;
     padding: 20px 0;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+p, li, a, strong, em, code {
+    overflow-wrap: anywhere;
 }
 
 h1, h2, h3 {
@@ -33,12 +46,13 @@ h1, h2, h3 {
 }
 
 h1 {
-    font-size: 2.8em;
+    font-size: clamp(2.2rem, 6vw, 3.2rem);
     margin-top: 10px;
+    line-height: 1.1;
 }
 
 h2 {
-    font-size: 2.2em;
+    font-size: clamp(1.8rem, 5vw, 2.4rem);
     text-align: center;
     margin-bottom: 40px;
     position: relative;
@@ -54,7 +68,7 @@ h2::after { /* Petite ligne sous les titres de section */
 }
 
 h3 {
-    font-size: 1.6em;
+    font-size: clamp(1.25rem, 4vw, 1.6rem);
     color: var(--primary-color);
     margin-bottom: 10px;
 }
@@ -121,7 +135,8 @@ p {
 .header-text {
     /* Les éléments à l'intérieur de header-text sont par défaut en colonne */
     display: flex;
-    flex-direction: column; 
+    flex-direction: column;
+    min-width: 0;
 }
 
 @media (min-width: 768px) {
@@ -138,8 +153,9 @@ p {
 }
 
 .profile-picture {
-    width: 150px; /* Taille de la photo */
-    height: 150px;
+    width: clamp(120px, 30vw, 150px); /* Taille de la photo */
+    aspect-ratio: 1;
+    height: auto;
     border-radius: 50%; /* Rend la photo ronde */
     overflow: hidden; /* Cache les débordements si la photo n'est pas carrée */
     border: 5px solid rgba(255, 255, 255, 0.8); /* Bordure blanche autour de la photo */
@@ -155,12 +171,12 @@ p {
 
 .hero h1 {
     color: #fff;
-    font-size: 3.5em; /* Plus grand pour le nom */
+    font-size: clamp(2.4rem, 7vw, 3.5rem); /* Plus grand pour le nom */
     margin-bottom: 5px;
 }
 
 .hero .subtitle {
-    font-size: 1.4em;
+    font-size: clamp(1.05rem, 3.2vw, 1.4rem);
     opacity: 0.9;
     margin-top: 0;
     font-weight: 300;
@@ -196,6 +212,25 @@ p {
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     transition: transform 0.3s ease;
+}
+
+.matiere-card > ul > strong,
+.matiere-card > ul > p,
+.matiere-card > ul > ul,
+.matiere-card > ul > li {
+    display: block;
+}
+
+.matiere-card > ul > strong {
+    margin-top: 16px;
+}
+
+.matiere-card > ul > strong:first-of-type {
+    margin-top: 0;
+}
+
+.matiere-card ul ul {
+    margin: 10px 0 0;
 }
 
 .matiere-card:hover {
@@ -235,22 +270,48 @@ footer {
 /* --- Responsive Adjustments --- */
 @media (max-width: 600px) {
     .hero {
-        padding: 40px 0;
+        padding: 36px 0;
     }
 
     .hero h1 {
-        font-size: 2.5em;
+        font-size: 2.2rem;
     }
 
     .hero .subtitle {
-        font-size: 1.1em;
+        font-size: 1rem;
     }
 
     h2 {
         font-size: 1.8em;
+        margin-bottom: 28px;
     }
 
     .section {
         padding: 40px 0;
+    }
+
+    .container {
+        width: min(94%, 960px);
+    }
+
+    .matiere-card {
+        padding: 18px;
+        border-radius: 12px;
+    }
+
+    .matiere-card:hover {
+        transform: none;
+    }
+
+    .matiere-card ul li {
+        padding-left: 22px;
+    }
+
+    .note-enseignement, .note-contact {
+        margin-top: 28px;
+    }
+
+    footer {
+        padding: 24px 0;
     }
 }

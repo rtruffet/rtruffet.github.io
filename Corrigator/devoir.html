@@ -383,7 +383,10 @@ function renderQuestions(exerciceId, questions) {
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
-  zone.appendChild(table);
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-scroll";
+  tableWrap.appendChild(table);
+  zone.appendChild(tableWrap);
   updateQuestionMoveButtons(tbody);
 }
 
@@ -677,7 +680,7 @@ function renderResultatsTable() {
     </tr>`;
   }).join("");
 
-  zone.innerHTML = `<table class="resultats-table">
+  zone.innerHTML = `<div class="table-scroll"><table class="resultats-table">
     <colgroup>
       <col style="width:23%">
       <col style="width:13%">
@@ -699,7 +702,7 @@ function renderResultatsTable() {
       <th>Statut</th>
     </tr></thead>
     <tbody>${rows}</tbody>
-  </table>`;
+  </table></div>`;
 }
 
 async function saveAjustementEtudiant(etudiantId) {
@@ -937,13 +940,13 @@ async function loadMailTemplates() {
     const rang = (m.classement_groupe == null)
       ? "non classé"
       : `${m.classement_groupe}/${m.nb_corrigees_groupe}`;
-    return `<label style="display:flex;align-items:center;gap:.6rem;padding:.35rem 0;border-bottom:1px solid #f0f0f0">
+    return `<label class="mail-row">
       <input type="checkbox" class="mail-check" data-mail-index="${i}">
-      <span style="font-size:.9rem"><strong>${escHtml(label)}</strong> — ${escHtml(m.subject || "(sans objet)")} <span style="color:#666">(rang: ${escHtml(rang)})</span></span>
+      <span class="mail-row-text"><strong>${escHtml(label)}</strong> — ${escHtml(m.subject || "(sans objet)")} <span style="color:#666">(rang: ${escHtml(rang)})</span></span>
     </label>`;
   }).join("");
 
-  zone.innerHTML = `<div style="max-height:260px;overflow:auto">${rows}</div>`;
+  zone.innerHTML = `<div class="mail-list-scroll">${rows}</div>`;
 }
 
 function selectAllMails(checked) {

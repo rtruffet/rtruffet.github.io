@@ -7,6 +7,16 @@ body {
   background: #f0f2f5;
   color: #1a1a2e;
   min-height: 100vh;
+  overflow-x: hidden;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Navigation */
@@ -17,6 +27,7 @@ nav {
   display: flex;
   align-items: center;
   gap: 1.5rem;
+  flex-wrap: wrap;
 }
 nav h1 { font-size: 1.2rem; letter-spacing: .05em; color: #fff; }
 .brand {
@@ -29,7 +40,14 @@ nav h1 { font-size: 1.2rem; letter-spacing: .05em; color: #fff; }
   width: auto;
   display: block;
 }
-nav a { color: #90caf9; text-decoration: none; font-size: .9rem; }
+nav a {
+  color: #90caf9;
+  text-decoration: none;
+  font-size: .9rem;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
 nav a:hover { text-decoration: underline; }
 .nav-correction-meta {
   display: flex;
@@ -60,6 +78,7 @@ nav a:hover { text-decoration: underline; }
   align-items: center;
   gap: .45rem;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .nav-devoir-title {
   margin-left: auto;
@@ -77,6 +96,7 @@ nav a:hover { text-decoration: underline; }
   align-items: center;
   gap: .4rem;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .nav-sync-status {
   font-size: .78rem;
@@ -96,6 +116,7 @@ main {
   max-width: 900px;
   margin: 2rem auto;
   padding: 0 1rem;
+  width: 100%;
 }
 
 /* Cartes */
@@ -108,6 +129,10 @@ main {
 }
 .card h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #16213e; }
 
+p, span, label, strong, small, td, th, a, button {
+  overflow-wrap: anywhere;
+}
+
 /* Formulaires */
 .form-row {
   display: flex;
@@ -115,13 +140,14 @@ main {
   flex-wrap: wrap;
   margin-bottom: .75rem;
 }
-input[type="text"], input[type="email"], input[type="number"], textarea {
+input[type="text"], input[type="email"], input[type="number"], textarea, select {
   flex: 1;
   min-width: 140px;
-  padding: .5rem .75rem;
+  max-width: 100%;
+  padding: .7rem .85rem;
   border: 1px solid #ccc;
   border-radius: 6px;
-  font-size: .95rem;
+  font-size: 16px;
   background: #fafafa;
 }
 input[type="number"] { max-width: 100px; }
@@ -129,13 +155,15 @@ textarea { min-height: 60px; resize: vertical; }
 
 /* Boutons */
 button, .btn {
-  padding: .5rem 1rem;
+  padding: .7rem 1rem;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-size: .9rem;
   font-weight: 600;
   transition: filter .15s;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 button:hover, .btn:hover { filter: brightness(1.1); }
 
@@ -144,7 +172,8 @@ button:hover, .btn:hover { filter: brightness(1.1); }
 .btn-danger   { background: #c62828; color: #fff; }
 .btn-warning  { background: #f57f17; color: #fff; }
 .btn-neutral  { background: #e0e0e0; color: #333; }
-.btn-sm       { padding: .25rem .6rem; font-size: .8rem; }
+.btn-sm       { padding: .42rem .7rem; font-size: .8rem; min-height: 38px; }
+.btn-xs       { padding: .2rem .4rem; font-size: .75rem; min-height: 32px; }
 .btn-ghost {
   background: transparent;
   color: #415a77;
@@ -164,11 +193,25 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
   padding: .75rem 1rem;
   border-bottom: 1px solid #f0f0f0;
 }
 .devoir-list li:last-child { border-bottom: none; }
 .devoir-list .devoir-title { font-weight: 600; }
+.devoir-list li > span,
+.etudiant-list li > span {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.devoir-list li > div,
+.etudiant-list li > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  max-width: 100%;
+}
 
 /* Liste d'étudiants */
 .etudiant-list { list-style: none; }
@@ -176,6 +219,8 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
   padding: .5rem .75rem;
   border-bottom: 1px solid #f0f0f0;
   border-radius: 6px;
@@ -264,10 +309,29 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   justify-content: center;
   gap: 1rem;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 
 /* Résumé des notes */
 #recap { margin-top: 1rem; }
+#recap-body,
+#resultats-zone,
+#stats-zone,
+#mail-list-zone,
+[id^="questions-"] {
+  min-width: 0;
+}
+#recap-body .table-scroll,
+#resultats-zone .table-scroll,
+[id^="questions-"] .table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: .2rem;
+}
+.table-scroll table {
+  min-width: 640px;
+}
 #recap table {
   width: 100%;
   border-collapse: collapse;
@@ -285,6 +349,7 @@ button:hover, .btn:hover { filter: brightness(1.1); }
 .resultats-table {
   width: 100%;
   table-layout: fixed;
+  min-width: 760px;
   border-collapse: collapse;
   font-size: .9rem;
   border: 1px solid #d9e2ee;
@@ -363,6 +428,8 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   border: 1px solid #e8ebf0;
   border-radius: 8px;
   padding: .9rem 1rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .stats-boxplot-title {
   font-size: .9rem;
@@ -375,6 +442,7 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   height: 252px;
   margin-top: 1.9rem;
   margin-bottom: .85rem;
+  min-width: 540px;
 }
 .stats-boxplot-axis {
   position: absolute;
@@ -484,6 +552,7 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   position: relative;
   height: 188px;
   margin-bottom: .15rem;
+  min-width: 540px;
 }
 .stats-histogram-axis {
   position: absolute;
@@ -547,6 +616,29 @@ button:hover, .btn:hover { filter: brightness(1.1); }
 }
 #toast.show { opacity: 1; }
 
+.mail-list-scroll {
+  max-height: 260px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mail-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.mail-row input[type="checkbox"] {
+  flex: 0 0 auto;
+}
+
+.mail-row-text {
+  font-size: .9rem;
+  min-width: 0;
+}
+
 /* Feedback visuel sur réordonnancement */
 .exercice-card,
 #exercices-zone tbody tr {
@@ -581,8 +673,107 @@ button:hover, .btn:hover { filter: brightness(1.1); }
 
 /* Responsive */
 @media (max-width: 600px) {
-  .note-btn { width: 48px; font-size: .9rem; }
-  #etudiant-name { min-width: 120px; }
+  nav {
+    gap: .75rem;
+    padding: .85rem 1rem;
+  }
+  nav > a {
+    order: 2;
+  }
+  .brand {
+    width: 100%;
+    justify-content: center;
+  }
+  .brand-logo {
+    height: 42px;
+  }
+  main {
+    margin: 1rem auto 1.5rem;
+    padding: 0 .75rem;
+  }
+  .card {
+    padding: 1rem;
+    border-radius: 14px;
+  }
+  .form-row > * {
+    width: 100%;
+    min-width: 0 !important;
+  }
+  .devoir-list li,
+  .etudiant-list li {
+    align-items: stretch;
+  }
+  .devoir-list li > div,
+  .etudiant-list li > div {
+    width: 100%;
+  }
+  .note-btn {
+    width: calc(25% - .4rem);
+    min-width: 52px;
+    font-size: .9rem;
+  }
+  #note-buttons {
+    gap: .4rem;
+  }
+  #note-buttons .btn:not(.note-btn) {
+    flex: 1 0 100%;
+    margin-left: 0 !important;
+  }
+  #etudiant-name {
+    min-width: 0;
+    width: 100%;
+    font-size: 1rem;
+  }
+  #correction-header {
+    align-items: stretch;
+  }
+  .etudiant-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .etudiant-nav .btn {
+    flex: 1 1 0;
+  }
+  #filtre-eleve,
+  #filtre-groupe,
+  #question-select,
+  #filtre-groupe-res,
+  #devoir-groupe-select,
+  #import-groupe,
+  #e-groupe {
+    width: 100%;
+    min-width: 0 !important;
+  }
+  #question-nav {
+    gap: .6rem;
+  }
+  #question-nav .btn,
+  #question-nav select {
+    width: 100%;
+    min-width: 0 !important;
+  }
+  .resultats-table {
+    font-size: .84rem;
+  }
+  .stats-boxplot-card {
+    padding: .8rem;
+  }
+  .stats-boxplot-wrap,
+  .stats-histogram-wrap {
+    min-width: 500px;
+  }
+  #toast {
+    left: .75rem;
+    right: .75rem;
+    bottom: .75rem;
+    text-align: center;
+  }
+  .mail-row {
+    align-items: flex-start;
+  }
+  .mail-row-text {
+    font-size: .85rem;
+  }
   .nav-devoir-title {
     max-width: 100%;
     width: 100%;
@@ -608,6 +799,22 @@ button:hover, .btn:hover { filter: brightness(1.1); }
     order: 6;
     margin-left: 0;
     justify-content: flex-start;
+  }
+  .nav-sync-actions .btn,
+  .nav-correction-actions .btn {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .note-btn {
+    width: calc(33.333% - .35rem);
+  }
+  nav > a,
+  .nav-sync-actions,
+  .nav-correction-actions,
+  .nav-correction-meta {
+    font-size: .82rem;
   }
 }
 
