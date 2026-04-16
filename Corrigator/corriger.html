@@ -126,9 +126,10 @@
       </div>
     </div>
 
-    <p id="finished-msg" style="display:none;text-align:center;color:#2e7d32;font-weight:700;font-size:1.1rem;padding:1rem 0">
-      ✅ Toutes les questions ont été notées pour cet étudiant !
-    </p>
+    <div id="finished-msg" style="display:none;text-align:center;padding:1rem 0">
+      <p style="color:#2e7d32;font-weight:700;font-size:1.1rem;margin:0 0 .75rem 0">✅ Toutes les questions ont été notées pour cet étudiant !</p>
+      <button class="btn btn-neutral" onclick="questionIdx=questions.length-1;renderQuestion();renderRecap();focusCurrentNoteButton()">◀ Revenir à la dernière question</button>
+    </div>
   </div>
 
   <!-- ── Récapitulatif ──────────────────────────────────────────────────── -->
