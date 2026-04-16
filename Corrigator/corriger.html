@@ -32,11 +32,8 @@
       <button id="shortcuts-toggle-btn" class="btn btn-neutral btn-sm" onclick="toggleShortcutsPanel()">Raccourcis</button>
     </div>
     <div class="nav-sync-actions">
-      <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
-      <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
-      <button class="btn btn-neutral btn-sm" onclick="exportLocalDb()">Exporter</button>
-      <button class="btn btn-neutral btn-sm" onclick="triggerImportLocalDb()">Importer</button>
-      <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
+      <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()" style="display:none">Pull</button>
+      <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()" style="display:none">Push</button>
       <span id="sync-status" class="nav-sync-status">Etat sync…</span>
     </div>
   </div>

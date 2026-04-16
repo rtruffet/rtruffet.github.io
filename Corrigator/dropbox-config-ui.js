@@ -10,6 +10,13 @@
     const navActions = document.querySelector(".nav-sync-actions");
     if (!navActions) return;
 
+    if (isConfigured) {
+      const pullBtn = document.getElementById("sync-pull-btn");
+      const pushBtn = document.getElementById("sync-push-btn");
+      if (pullBtn) pullBtn.style.display = "";
+      if (pushBtn) pushBtn.style.display = "";
+    }
+
     const configBtn = document.createElement("button");
     configBtn.className = "btn btn-neutral btn-sm";
     configBtn.id = "dropbox-config-btn";
