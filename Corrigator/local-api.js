@@ -1,13 +1,26 @@
 (function () {
   const forceServerMode = new URL(window.location.href).searchParams.get("server") === "1";
-  if (forceServerMode) return;
-
   const API_ORIGIN = "http://localhost:8000";
   const DB_KEY = "corrigator.local.db.v1";
   const CLOUD_KEY = "corrigator.local.cloud.v1";
   const META_KEY = "corrigator.local.meta.v1";
+  const IDB_NAME = "corrigator.local.storage";
+  const IDB_VERSION = 1;
+  const IDB_STORE = "kv";
+  const BACKUP_FORMAT = "corrigator-backup";
+  const BACKUP_VERSION = 1;
 
   const nativeFetch = window.fetch.bind(window);
+
+  if (forceServerMode) {
+    window.exportLocalDb = async function () {
+      window.alert("Export indisponible en mode serveur.");
+    };
+    window.triggerImportLocalDb = async function () {
+      window.alert("Import indisponible en mode serveur.");
+    };
+    return;
+  }
 
   function deepClone(obj) {
     return JSON.parse(JSON.stringify(obj));
@@ -40,7 +53,7 @@
     return Date.now();
   }
 
-  function loadDb() {
+  function loadLegacyDb() {
     try {
       const raw = localStorage.getItem(DB_KEY);
       if (!raw) return defaultDb();
@@ -51,7 +64,7 @@
     }
   }
 
-  function getMeta() {
+  function getLegacyMeta() {
     try {
       const raw = localStorage.getItem(META_KEY);
       if (!raw) {
@@ -65,17 +78,173 @@
     }
   }
 
-  let db = loadDb();
-  let meta = getMeta();
+  function getLegacyCloudSnapshot() {
+    try {
+      const raw = localStorage.getItem(CLOUD_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.db || !parsed.mtimeMs) return null;
+      return parsed;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function hasIndexedDb() {
+    return typeof window.indexedDB !== "undefined";
+  }
+
+  function normalizeDb(candidate) {
+    return Object.assign(defaultDb(), candidate || {});
+  }
+
+  function normalizeMeta(candidate) {
+    const out = Object.assign({ localMtimeMs: nowMs() }, candidate || {});
+    if (!out.localMtimeMs) out.localMtimeMs = nowMs();
+    return out;
+  }
+
+  function normalizeCloudSnapshot(candidate) {
+    if (!candidate || !candidate.db || !candidate.mtimeMs) return null;
+    return {
+      db: normalizeDb(candidate.db),
+      mtimeMs: Number(candidate.mtimeMs) || nowMs(),
+    };
+  }
+
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const request = window.indexedDB.open(IDB_NAME, IDB_VERSION);
+      request.onupgradeneeded = () => {
+        const dbRef = request.result;
+        if (!dbRef.objectStoreNames.contains(IDB_STORE)) {
+          dbRef.createObjectStore(IDB_STORE, { keyPath: "key" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Ouverture IndexedDB impossible"));
+    });
+  }
+
+  async function idbReadValue(key) {
+    const dbRef = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = dbRef.transaction(IDB_STORE, "readonly");
+      const store = tx.objectStore(IDB_STORE);
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result ? request.result.value : null);
+      request.onerror = () => reject(request.error || new Error(`Lecture IndexedDB impossible (${key})`));
+      tx.oncomplete = () => dbRef.close();
+      tx.onabort = () => reject(tx.error || new Error(`Lecture IndexedDB interrompue (${key})`));
+      tx.onerror = () => reject(tx.error || new Error(`Lecture IndexedDB en erreur (${key})`));
+    });
+  }
+
+  async function idbWriteEntries(entries) {
+    const dbRef = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = dbRef.transaction(IDB_STORE, "readwrite");
+      const store = tx.objectStore(IDB_STORE);
+      entries.forEach((entry) => {
+        if (entry.value == null) {
+          store.delete(entry.key);
+        } else {
+          store.put({ key: entry.key, value: entry.value });
+        }
+      });
+      tx.oncomplete = () => {
+        dbRef.close();
+        resolve();
+      };
+      tx.onabort = () => reject(tx.error || new Error("Ecriture IndexedDB interrompue"));
+      tx.onerror = () => reject(tx.error || new Error("Ecriture IndexedDB en erreur"));
+    });
+  }
+
+  let storageBackend = hasIndexedDb() ? "indexeddb" : "localstorage";
+  let db = defaultDb();
+  let meta = normalizeMeta();
+  let cloudSnapshot = null;
+  let storageReadyPromise = null;
+
+  async function writeStorageEntries(entries) {
+    if (storageBackend === "indexeddb") {
+      try {
+        await idbWriteEntries(entries);
+        return;
+      } catch (_err) {
+        storageBackend = "localstorage";
+      }
+    }
+
+    entries.forEach((entry) => {
+      let storageKey = null;
+      if (entry.key === "db") storageKey = DB_KEY;
+      if (entry.key === "meta") storageKey = META_KEY;
+      if (entry.key === "cloud") storageKey = CLOUD_KEY;
+      if (!storageKey) return;
+      if (entry.value == null) {
+        localStorage.removeItem(storageKey);
+        return;
+      }
+      localStorage.setItem(storageKey, JSON.stringify(entry.value));
+    });
+  }
+
+  async function ensureStorageReady() {
+    if (!storageReadyPromise) {
+      storageReadyPromise = (async () => {
+        if (storageBackend !== "indexeddb") {
+          db = normalizeDb(loadLegacyDb());
+          meta = normalizeMeta(getLegacyMeta());
+          cloudSnapshot = normalizeCloudSnapshot(getLegacyCloudSnapshot());
+          return;
+        }
+
+        try {
+          const [storedDb, storedMeta, storedCloud] = await Promise.all([
+            idbReadValue("db"),
+            idbReadValue("meta"),
+            idbReadValue("cloud"),
+          ]);
+
+          if (storedDb) {
+            db = normalizeDb(storedDb);
+            meta = normalizeMeta(storedMeta);
+            cloudSnapshot = normalizeCloudSnapshot(storedCloud);
+            return;
+          }
+
+          db = normalizeDb(loadLegacyDb());
+          meta = normalizeMeta(getLegacyMeta());
+          cloudSnapshot = normalizeCloudSnapshot(getLegacyCloudSnapshot());
+          await writeStorageEntries([
+            { key: "db", value: deepClone(db) },
+            { key: "meta", value: deepClone(meta) },
+            { key: "cloud", value: cloudSnapshot ? deepClone(cloudSnapshot) : null },
+          ]);
+        } catch (_err) {
+          storageBackend = "localstorage";
+          db = normalizeDb(loadLegacyDb());
+          meta = normalizeMeta(getLegacyMeta());
+          cloudSnapshot = normalizeCloudSnapshot(getLegacyCloudSnapshot());
+        }
+      })();
+    }
+
+    return storageReadyPromise;
+  }
 
   function updateLocalMeta() {
     meta.localMtimeMs = nowMs();
-    localStorage.setItem(META_KEY, JSON.stringify(meta));
   }
 
-  function saveDb() {
-    localStorage.setItem(DB_KEY, JSON.stringify(db));
+  async function saveDb() {
     updateLocalMeta();
+    await writeStorageEntries([
+      { key: "db", value: deepClone(db) },
+      { key: "meta", value: deepClone(meta) },
+    ]);
   }
 
   function makeMetaEntry(name, payload, mtimeMs) {
@@ -90,23 +259,112 @@
   }
 
   function getCloudSnapshot() {
-    try {
-      const raw = localStorage.getItem(CLOUD_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || !parsed.db || !parsed.mtimeMs) return null;
-      return parsed;
-    } catch (_err) {
-      return null;
-    }
+    return cloudSnapshot ? deepClone(cloudSnapshot) : null;
   }
 
-  function setCloudSnapshot(snapshotDb) {
-    const snap = {
+  async function setCloudSnapshot(snapshotDb) {
+    cloudSnapshot = {
       db: deepClone(snapshotDb),
       mtimeMs: nowMs(),
     };
-    localStorage.setItem(CLOUD_KEY, JSON.stringify(snap));
+    await writeStorageEntries([{ key: "cloud", value: deepClone(cloudSnapshot) }]);
+  }
+
+  function isDbPayload(candidate) {
+    return Boolean(
+      candidate
+        && typeof candidate === "object"
+        && candidate.seq
+        && Array.isArray(candidate.groupes)
+        && Array.isArray(candidate.etudiants)
+        && Array.isArray(candidate.devoirs)
+        && Array.isArray(candidate.devoir_groupes)
+        && Array.isArray(candidate.exercices)
+        && Array.isArray(candidate.questions)
+        && Array.isArray(candidate.notes)
+        && Array.isArray(candidate.ajustements_notes)
+    );
+  }
+
+  function createBackupPayload() {
+    return {
+      format: BACKUP_FORMAT,
+      version: BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      storage_backend: storageBackend,
+      db: deepClone(db),
+    };
+  }
+
+  function parseImportedPayload(payload) {
+    if (isDbPayload(payload)) return normalizeDb(payload);
+    if (payload && payload.format === BACKUP_FORMAT && isDbPayload(payload.db)) {
+      return normalizeDb(payload.db);
+    }
+    throw new Error("Fichier de sauvegarde invalide");
+  }
+
+  async function importBackupPayload(payload) {
+    const importedDb = parseImportedPayload(payload);
+    db = importedDb;
+    meta = normalizeMeta({ localMtimeMs: nowMs() });
+    cloudSnapshot = null;
+    await writeStorageEntries([
+      { key: "db", value: deepClone(db) },
+      { key: "meta", value: deepClone(meta) },
+      { key: "cloud", value: null },
+    ]);
+  }
+
+  function notifyStorageAction(message, duration) {
+    if (typeof window.toast === "function") {
+      window.toast(message, duration);
+      return;
+    }
+    window.alert(message);
+  }
+
+  function buildBackupFilename() {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    return `corrigator_backup_${stamp}.json`;
+  }
+
+  async function exportLocalDb() {
+    await ensureStorageReady();
+    const payload = createBackupPayload();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = buildBackupFilename();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(blobUrl);
+    notifyStorageAction("Export terminé", 2200);
+  }
+
+  async function triggerImportLocalDb() {
+    await ensureStorageReady();
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.addEventListener("change", async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const ok = window.confirm("Importer cette sauvegarde remplacera toute la base locale actuelle. Continuer ?");
+      if (!ok) return;
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        await importBackupPayload(payload);
+        notifyStorageAction("Import terminé, rechargement…", 2200);
+        window.setTimeout(() => window.location.reload(), 300);
+      } catch (err) {
+        window.alert(`Import impossible : ${err.message}`);
+      }
+    }, { once: true });
+    input.click();
   }
 
   function nextId(tableName) {
@@ -493,9 +751,63 @@
     return pathname.replace(/\/+$/, "") || "/";
   }
 
+  async function handleSyncWithDropbox(method, path, req) {
+    if (typeof window.dropboxSync === "undefined") return null;
+
+    const creds = window.dropboxSync.getCredentials();
+    if (!creds) return null;
+
+    if (method === "GET" && path === "/sync/status") {
+      const local = makeMetaEntry("browser://local-db", db, Number(meta.localMtimeMs || nowMs()));
+      return jsonResponse(200, {
+        local,
+        cloud: null,
+        relation: "in-sync",
+        sync_in_progress: false,
+        cloud_path: "dropbox://app-folder/corrigator_db.json",
+        storage_backend: storageBackend,
+        dropbox_configured: true,
+      });
+    }
+
+    if (method === "POST" && path === "/sync/push") {
+      try {
+        const payload = createBackupPayload();
+        const json = JSON.stringify(payload, null, 2);
+        await window.dropboxSync.dropboxUpload(json);
+        const local = makeMetaEntry("browser://local-db", db, Number(meta.localMtimeMs || nowMs()));
+        window.dropboxSync.notify("Push vers Dropbox réussi", 2200);
+        return jsonResponse(200, { ok: true, action: "push", local, cloud_path: "dropbox://app-folder/corrigator_db.json" });
+      } catch (err) {
+        return jsonResponse(500, { detail: `Push Dropbox échoué: ${err.message}` });
+      }
+    }
+
+    if (method === "POST" && path === "/sync/pull") {
+      try {
+        const json = await window.dropboxSync.dropboxDownload();
+        const payload = JSON.parse(json);
+        await importBackupPayload(payload);
+        const local = makeMetaEntry("browser://local-db", db, Number(meta.localMtimeMs || nowMs()));
+        window.dropboxSync.notify("Pull depuis Dropbox réussi, rechargement…", 2200);
+        return jsonResponse(200, { ok: true, action: "pull", local, cloud_path: "dropbox://app-folder/corrigator_db.json" });
+      } catch (err) {
+        return jsonResponse(500, { detail: `Pull Dropbox échoué: ${err.message}` });
+      }
+    }
+
+    return null;
+  }
+
   async function handleApi(req, url) {
+    await ensureStorageReady();
+    await window.dropboxSync?.ensureCredentialsReady?.();
+
     const method = req.method.toUpperCase();
     const path = parsePath(url.pathname);
+
+    const dropboxResponse = await handleSyncWithDropbox(method, path, req);
+    if (dropboxResponse) return dropboxResponse;
 
     if (method === "GET" && path === "/docs") {
       return jsonResponse(200, { message: "Corrigator offline actif (PWA)." });
@@ -511,6 +823,7 @@
         relation: getRelation(local, cloud),
         sync_in_progress: false,
         cloud_path: "browser://cloud-snapshot",
+        storage_backend: storageBackend,
       });
     }
 
@@ -531,7 +844,7 @@
         });
       }
 
-      setCloudSnapshot(db);
+      await setCloudSnapshot(db);
       const newCloudSnap = getCloudSnapshot();
       const newCloud = newCloudSnap ? makeMetaEntry("browser://cloud-snapshot", newCloudSnap.db, newCloudSnap.mtimeMs) : null;
       return jsonResponse(200, { ok: true, action: "push", local, cloud: newCloud, cloud_path: "browser://cloud-snapshot" });
@@ -558,7 +871,7 @@
       }
 
       db = deepClone(cloudSnap.db);
-      saveDb();
+      await saveDb();
       const updatedLocal = makeMetaEntry("browser://local-db", db, Number(meta.localMtimeMs || nowMs()));
       return jsonResponse(200, { ok: true, action: "pull", local: updatedLocal, cloud, cloud_path: "browser://cloud-snapshot" });
     }
@@ -582,7 +895,7 @@
       if (exists) return jsonResponse(400, { detail: "Nom de groupe deja utilise" });
       const created = { id: nextId("groupes"), nom };
       db.groupes.push(created);
-      saveDb();
+      await saveDb();
       return jsonResponse(201, { id: created.id, nom: created.nom, nb_etudiants: 0 });
     }
 
@@ -595,7 +908,7 @@
         db.groupes.splice(idx, 1);
         db.devoir_groupes = db.devoir_groupes.filter((dg) => dg.groupe_id !== groupeId);
         db.etudiants = db.etudiants.map((e) => (e.groupe_id === groupeId ? Object.assign({}, e, { groupe_id: null }) : e));
-        saveDb();
+        await saveDb();
         return emptyResponse(204);
       }
     }
@@ -641,7 +954,7 @@
           });
           crees += 1;
         });
-        saveDb();
+        await saveDb();
         return jsonResponse(200, { crees, ignores, erreurs });
       }
     }
@@ -683,7 +996,7 @@
         groupe_id: groupeId,
       };
       db.etudiants.push(created);
-      saveDb();
+      await saveDb();
       return jsonResponse(201, {
         id: created.id,
         nom: created.nom,
@@ -703,7 +1016,7 @@
         db.etudiants.splice(idx, 1);
         db.notes = db.notes.filter((n) => n.etudiant_id !== etudiantId);
         db.ajustements_notes = db.ajustements_notes.filter((a) => a.etudiant_id !== etudiantId);
-        saveDb();
+        await saveDb();
         return emptyResponse(204);
       }
     }
@@ -720,7 +1033,7 @@
       if (!titre) return jsonResponse(422, { detail: "Titre requis" });
       const created = { id: nextId("devoirs"), titre, description };
       db.devoirs.push(created);
-      saveDb();
+      await saveDb();
       return jsonResponse(201, buildDevoirById(created.id));
     }
 
@@ -737,7 +1050,7 @@
         const exists = db.devoirs.some((d) => d.id === devoirId);
         if (!exists) return jsonResponse(404, { detail: "Devoir introuvable" });
         deleteDevoirCascade(devoirId);
-        saveDb();
+        await saveDb();
         return emptyResponse(204);
       }
     }
@@ -776,7 +1089,7 @@
             groupe_id: groupeId,
             rehausse_pct: 0,
           });
-          saveDb();
+          await saveDb();
         }
         return emptyResponse(204);
       }
@@ -786,7 +1099,7 @@
         const devoir = db.devoirs.find((d) => d.id === devoirId);
         if (!devoir) return jsonResponse(404, { detail: "Devoir introuvable" });
         db.devoir_groupes = db.devoir_groupes.filter((dg) => !(dg.devoir_id === devoirId && dg.groupe_id === groupeId));
-        saveDb();
+        await saveDb();
         return emptyResponse(204);
       }
     }
@@ -801,7 +1114,7 @@
         const row = db.devoir_groupes.find((dg) => dg.devoir_id === devoirId && dg.groupe_id === groupeId);
         if (!row) return jsonResponse(404, { detail: "Association devoir/groupe introuvable" });
         row.rehausse_pct = bonusPct;
-        saveDb();
+        await saveDb();
         return jsonResponse(200, { groupe_id: groupeId, rehausse_pct: bonusPct });
       }
     }
@@ -834,7 +1147,7 @@
           row.bonus_abs = bonusAbs;
           row.bonus_pct = bonusPct;
         }
-        saveDb();
+        await saveDb();
         return emptyResponse(204);
       }
     }
@@ -869,7 +1182,7 @@
           ordre,
         };
         db.exercices.push(created);
-        saveDb();
+        await saveDb();
         return jsonResponse(201, Object.assign({}, created, { questions: [] }));
       }
     }
@@ -881,7 +1194,7 @@
         const ex = db.exercices.find((e) => e.id === exerciceId);
         if (!ex) return jsonResponse(404, { detail: "Exercice introuvable" });
         deleteExerciceCascade(exerciceId);
-        saveDb();
+        await saveDb();
         return emptyResponse(204);
       }
     }
@@ -904,7 +1217,7 @@
         const old = ex.ordre;
         ex.ordre = voisin.ordre;
         voisin.ordre = old;
-        saveDb();
+        await saveDb();
         return jsonResponse(200, { success: true });
       }
     }
@@ -929,7 +1242,7 @@
           ordre,
         };
         db.questions.push(created);
-        saveDb();
+        await saveDb();
         return jsonResponse(201, created);
       }
     }
@@ -943,7 +1256,7 @@
         const body = await requestJson(req);
         if (Object.prototype.hasOwnProperty.call(body, "enonce")) q.enonce = String(body.enonce);
         if (Object.prototype.hasOwnProperty.call(body, "poids")) q.poids = toNum(body.poids, q.poids);
-        saveDb();
+        await saveDb();
         return jsonResponse(200, deepClone(q));
       }
       if (m && method === "DELETE") {
@@ -951,7 +1264,7 @@
         const exists = db.questions.some((q) => q.id === questionId);
         if (!exists) return jsonResponse(404, { detail: "Question introuvable" });
         deleteQuestionCascade(questionId);
-        saveDb();
+        await saveDb();
         return emptyResponse(204);
       }
     }
@@ -974,7 +1287,7 @@
         const old = q.ordre;
         q.ordre = voisin.ordre;
         voisin.ordre = old;
-        saveDb();
+        await saveDb();
         return jsonResponse(200, { success: true });
       }
     }
@@ -1010,7 +1323,7 @@
           row.valeur = valeur;
           row.commentaire = commentaire;
         }
-        saveDb();
+        await saveDb();
         return jsonResponse(200, { question_id: questionId, valeur, commentaire });
       }
 
@@ -1020,7 +1333,7 @@
         const before = db.notes.length;
         db.notes = db.notes.filter((n) => !(n.etudiant_id === etudiantId && n.question_id === questionId));
         if (db.notes.length === before) return jsonResponse(404, { detail: "Note introuvable" });
-        saveDb();
+        await saveDb();
         return emptyResponse(204);
       }
     }
@@ -1141,5 +1454,8 @@
     }
   };
 
+  ensureStorageReady();
+  window.exportLocalDb = exportLocalDb;
+  window.triggerImportLocalDb = triggerImportLocalDb;
   window.CORRIGATOR_RUNTIME = "offline";
 })();

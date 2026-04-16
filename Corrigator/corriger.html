@@ -34,6 +34,8 @@
     <div class="nav-sync-actions">
       <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()">Pull</button>
       <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()">Push</button>
+      <button class="btn btn-neutral btn-sm" onclick="exportLocalDb()">Exporter</button>
+      <button class="btn btn-neutral btn-sm" onclick="triggerImportLocalDb()">Importer</button>
       <button class="btn btn-neutral btn-sm" onclick="loadSyncStatus()">Sync</button>
       <span id="sync-status" class="nav-sync-status">Etat sync…</span>
     </div>
@@ -148,9 +150,11 @@
 
 <div id="toast"></div>
 
+<script src="dropbox-sync.js"></script>
 <script src="local-api.js"></script>
 <script src="pwa-register.js"></script>
 <script src="sync-nav.js"></script>
+<script src="dropbox-config-ui.js"></script>
 <script>
 const API    = "http://localhost:8000";
 const params = new URLSearchParams(location.search);
