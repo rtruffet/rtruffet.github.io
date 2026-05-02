@@ -1,7 +1,8 @@
-const CACHE_NAME = "corrigator-pwa-v4";
+const CACHE_NAME = "corrigator-pwa-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
+  "./aide.html",
   "./devoir.html",
   "./corriger.html",
   "./etudiants.html",

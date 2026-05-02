@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corrigator – Aide</title>
+  <link rel="icon" type="image/png" href="corrigator_icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0d4ea0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand-row">
+    <h1 class="brand">
+      <a href="index.html" aria-label="Accueil Corrigator">
+        <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
+      </a>
+    </h1>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
+  </div>
+  <div class="nav-collapse" id="nav-collapse">
+    <a href="index.html">Devoirs</a>
+    <a href="etudiants.html">Étudiants</a>
+    <a href="aide.html">Aide</a>
+    <div class="nav-sync-actions">
+      <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()" style="display:none">Pull</button>
+      <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()" style="display:none">Push</button>
+      <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+    </div>
+  </div>
+</nav>
+<script>
+(function(){
+  var toggle=document.getElementById('nav-toggle');
+  var nav=toggle&&toggle.closest('nav');
+  if(!toggle||!nav)return;
+  toggle.addEventListener('click',function(){
+    var open=nav.classList.toggle('nav-open');
+    toggle.setAttribute('aria-expanded',open);
+    toggle.textContent=open?'✕':'☰';
+  });
+  document.querySelectorAll('#nav-collapse a').forEach(function(a){
+    a.addEventListener('click',function(){
+      nav.classList.remove('nav-open');
+      toggle.textContent='☰';
+      toggle.setAttribute('aria-expanded','false');
+    });
+  });
+})();
+</script>
+
+<main>
+  <div class="card">
+    <h2>Aide rapide</h2>
+    <p style="color:#445;line-height:1.55">
+      Corrigator enregistre toujours vos modifications sur l'appareil courant d'abord.
+      Vous pouvez donc corriger sans réseau. La synchronisation Dropbox est volontairement manuelle
+      (boutons Pull / Push), pour éviter les écrasements non voulus.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Mettre Corrigator hors ligne sur téléphone</h2>
+    <p style="margin-bottom:.6rem;color:#445">L'application est une PWA: vous pouvez l'installer sur l'écran d'accueil.</p>
+    <h3 style="font-size:1rem;color:#16213e;margin:0 0 .4rem 0">Android (Chrome, Edge...)</h3>
+    <ol style="padding-left:1.1rem;line-height:1.6;color:#223;margin:0 0 .8rem 0">
+      <li>Ouvrez Corrigator dans le navigateur.</li>
+      <li>Menu du navigateur -> Ajouter à l'écran d'accueil (ou Installer l'application).</li>
+      <li>Lancez ensuite Corrigator depuis l'icône installée.</li>
+      <li>Une fois les pages chargées au moins une fois, vous pouvez continuer même sans réseau.</li>
+    </ol>
+
+    <h3 style="font-size:1rem;color:#16213e;margin:0 0 .4rem 0">iPhone / iPad (Safari)</h3>
+    <ol style="padding-left:1.1rem;line-height:1.6;color:#223;margin:0">
+      <li>Ouvrez Corrigator dans Safari.</li>
+      <li>Touchez le bouton Partager.</li>
+      <li>Choisissez Sur l'écran d'accueil.</li>
+      <li>Ouvrez l'application depuis l'icône: elle fonctionne en local même sans réseau.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Fonctionnement des données locales</h2>
+    <ul style="padding-left:1.1rem;line-height:1.6;color:#223">
+      <li>Toute saisie est enregistrée localement sur l'appareil.</li>
+      <li>Sans internet, vous pouvez continuer à corriger et modifier vos données.</li>
+      <li>Ces changements restent sur l'appareil tant que vous ne faites pas un Push.</li>
+      <li>Le statut de sync affiche si la base locale est plus récente ou non que le cloud.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Communiquer avec Dropbox</h2>
+    <p style="color:#445;line-height:1.55;margin-bottom:.5rem">
+      La synchronisation n'est pas automatique. C'est vous qui décidez quand envoyer ou récupérer une base.
+      Ce choix est utile pour travailler hors ligne et garder le contrôle entre plusieurs appareils.
+    </p>
+
+    <h3 style="font-size:1rem;color:#16213e;margin:0 0 .4rem 0">Configuration initiale</h3>
+    <ol style="padding-left:1.1rem;line-height:1.6;color:#223;margin:0 0 .8rem 0">
+      <li>Cliquez sur le bouton Dropbox dans la barre de navigation.</li>
+      <li>Renseignez votre token (et éventuellement l'App key), puis testez.</li>
+      <li>Une fois configuré, les boutons Pull et Push deviennent disponibles.</li>
+    </ol>
+
+    <h3 style="font-size:1rem;color:#16213e;margin:0 0 .4rem 0">Que font Push et Pull ?</h3>
+    <ul style="padding-left:1.1rem;line-height:1.6;color:#223;margin:0 0 .8rem 0">
+      <li>Push: envoie votre base locale vers Dropbox.</li>
+      <li>Pull: remplace la base locale de l'appareil par la version Dropbox.</li>
+      <li>Avant écrasement, Corrigator vous demande confirmation.</li>
+    </ul>
+
+    <h3 style="font-size:1rem;color:#16213e;margin:0 0 .4rem 0">Travailler avec 2 appareils (même base)</h3>
+    <ol style="padding-left:1.1rem;line-height:1.6;color:#223;margin:0">
+      <li>Sur appareil A: travaillez normalement (même sans réseau), puis faites Push quand vous voulez partager.</li>
+      <li>Sur appareil B: faites Pull pour récupérer la dernière base du cloud.</li>
+      <li>Après modifications sur B, faites à nouveau Push.</li>
+      <li>Revenez sur A et faites Pull pour vous remettre à jour.</li>
+    </ol>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script src="dropbox-sync.js"></script>
+<script src="local-api.js"></script>
+<script src="pwa-register.js"></script>
+<script src="sync-nav.js"></script>
+<script src="dropbox-config-ui.js"></script>
+<script>
+function toast(msg, duration = 2000) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), duration);
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  if (typeof window.initSyncNav === "function") {
+    window.initSyncNav();
+  }
+});
+</script>
+</body>
+</html>
