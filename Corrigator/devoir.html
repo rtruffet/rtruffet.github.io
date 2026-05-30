@@ -388,12 +388,19 @@ function renderQuestions(exerciceId, questions) {
 
   const table = document.createElement("table");
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:.9rem;margin-bottom:.5rem";
-  table.innerHTML = `<thead><tr>
-    <th style="text-align:left;padding:.3rem .5rem;background:#f5f7fa">Énoncé</th>
-    <th style="text-align:center;padding:.3rem .5rem;background:#f5f7fa;width:80px">Poids</th>
-    <th style="text-align:center;padding:.3rem .5rem;background:#f5f7fa;width:90px">Ordre</th>
-    <th style="background:#f5f7fa;width:60px"></th>
-  </tr></thead>`;
+  table.innerHTML = `
+    <colgroup>
+      <col>
+      <col style="width:110px">
+      <col style="width:90px">
+      <col style="width:130px">
+    </colgroup>
+    <thead><tr>
+      <th style="text-align:left;padding:.3rem .5rem;background:#f5f7fa">Énoncé</th>
+      <th style="text-align:center;padding:.3rem .35rem;background:#f5f7fa">Poids</th>
+      <th style="text-align:center;padding:.3rem .2rem;background:#f5f7fa">Ordre</th>
+      <th style="text-align:center;padding:.3rem .2rem;background:#f5f7fa">Actions</th>
+    </tr></thead>`;
 
   const tbody = document.createElement("tbody");
   for (let idx = 0; idx < questions.length; idx++) {
@@ -411,12 +418,17 @@ function renderQuestions(exerciceId, questions) {
         <input type="number" value="${q.poids}" min="0" step="0.5" style="width:58px;text-align:center"
                onchange="updateQuestion(${q.id}, {poids: parseFloat(this.value)})">
       </td>
-      <td style="padding:.3rem .5rem;border-bottom:1px solid #f0f0f0;text-align:center;display:flex;gap:.25rem;justify-content:center">
-        <button data-reorder="1" data-target="question" data-move="up" class="btn btn-neutral btn-xs" onclick="moveQuestion(${q.id}, -1, this)" ${!canMoveUp ? "disabled" : ""} style="padding:.15rem .3rem">▲</button>
-        <button data-reorder="1" data-target="question" data-move="down" class="btn btn-neutral btn-xs" onclick="moveQuestion(${q.id}, 1, this)" ${!canMoveDown ? "disabled" : ""} style="padding:.15rem .3rem">▼</button>
+      <td style="padding:.3rem .15rem;border-bottom:1px solid #f0f0f0;text-align:center">
+        <div style="display:flex;gap:.25rem;justify-content:center;align-items:center;white-space:nowrap">
+          <button data-reorder="1" data-target="question" data-move="up" class="btn btn-neutral btn-xs" onclick="moveQuestion(${q.id}, -1, this)" ${!canMoveUp ? "disabled" : ""} style="padding:.15rem .3rem">▲</button>
+          <button data-reorder="1" data-target="question" data-move="down" class="btn btn-neutral btn-xs" onclick="moveQuestion(${q.id}, 1, this)" ${!canMoveDown ? "disabled" : ""} style="padding:.15rem .3rem">▼</button>
+        </div>
       </td>
-      <td style="padding:.3rem .5rem;border-bottom:1px solid #f0f0f0;text-align:center">
-        <button class="btn btn-danger btn-sm" onclick="deleteQuestion(${q.id})">✕</button>
+      <td style="padding:.3rem .2rem;border-bottom:1px solid #f0f0f0;text-align:center">
+        <div style="display:flex;gap:.25rem;justify-content:center;align-items:center;flex-wrap:nowrap;white-space:nowrap">
+          <button class="btn btn-neutral btn-sm" onclick="splitQuestion(${q.id})">Diviser</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteQuestion(${q.id})">✕</button>
+        </div>
       </td>`;
     tbody.appendChild(tr);
   }
@@ -483,6 +495,36 @@ async function deleteQuestion(id) {
   if (!confirm("Supprimer cette question ?")) return;
   await fetch(`${API}/questions/${id}`, { method: "DELETE" });
   await loadDevoir();
+}
+
+async function splitQuestion(id) {
+  const input = prompt("Diviser en combien de sous-questions ?", "2");
+  if (input === null) return;
+  const count = parseInt(input, 10);
+  if (!Number.isInteger(count) || count < 2) {
+    toast("Nombre invalide (>= 2)");
+    return;
+  }
+
+  const ok = confirm(`La question sera remplacée par ${count} sous-questions (a, b, c...). Continuer ?`);
+  if (!ok) return;
+
+  const res = await fetch(`${API}/questions/${id}/split`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ count }),
+  });
+
+  if (!res.ok) {
+    const out = await res.json().catch(() => ({}));
+    toast(out.detail || "Erreur division question");
+    return;
+  }
+
+  const out = await res.json().catch(() => ({}));
+  toast(`Question divisée en ${out.created_count || count}`);
+  await loadDevoir();
+  await loadResultats();
 }
 
 function wait(ms) {

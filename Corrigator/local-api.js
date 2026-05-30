@@ -396,6 +396,17 @@
     return Number(a.id) - Number(b.id);
   }
 
+  function alphaSuffix(index) {
+    let n = Number(index) + 1;
+    let out = "";
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      out = String.fromCharCode(97 + rem) + out;
+      n = Math.floor((n - 1) / 26);
+    }
+    return out;
+  }
+
   function groupNameById(groupeId) {
     const g = db.groupes.find((x) => x.id === groupeId);
     return g ? g.nom : null;
@@ -1560,6 +1571,80 @@
         touchDevoir(getDevoirIdForExercice(q.exercice_id));
         await saveDb();
         return jsonResponse(200, { success: true });
+      }
+    }
+
+    {
+      const m = path.match(/^\/questions\/(\d+)\/split$/);
+      if (m && method === "POST") {
+        const questionId = toInt(m[1], 0);
+        const original = db.questions.find((x) => x.id === questionId);
+        if (!original) return jsonResponse(404, { detail: "Question introuvable" });
+
+        const body = await requestJson(req);
+        const count = toInt(body.count, 2);
+        if (!Number.isFinite(count) || count < 2) {
+          return jsonResponse(422, { detail: "count doit être >= 2" });
+        }
+
+        const exerciceId = original.exercice_id;
+        const devoirId = getDevoirIdForExercice(exerciceId);
+        const baseEnonce = String(original.enonce || "").trim() || "Question";
+        const oldPoids = Number(original.poids || 0);
+        const splitPoids = oldPoids / count;
+
+        const exRows = db.questions
+          .filter((q) => q.exercice_id === exerciceId)
+          .sort(byOrderThenId);
+        const oldIndex = exRows.findIndex((q) => q.id === questionId);
+        if (oldIndex < 0) return jsonResponse(404, { detail: "Question introuvable" });
+
+        const notesOriginal = db.notes.filter((n) => n.question_id === questionId);
+
+        db.questions = db.questions.filter((q) => q.id !== questionId);
+        db.notes = db.notes.filter((n) => n.question_id !== questionId);
+
+        const created = [];
+        for (let i = 0; i < count; i++) {
+          const nq = {
+            id: nextId("questions"),
+            exercice_id: exerciceId,
+            enonce: `${baseEnonce}${alphaSuffix(i)}`,
+            poids: splitPoids,
+            ordre: Number(original.ordre || 0) + (i * 0.001),
+          };
+          db.questions.push(nq);
+          created.push(nq);
+
+          for (const oldNote of notesOriginal) {
+            db.notes.push({
+              id: nextId("notes"),
+              etudiant_id: oldNote.etudiant_id,
+              question_id: nq.id,
+              valeur: oldNote.valeur,
+              commentaire: oldNote.commentaire || null,
+            });
+          }
+        }
+
+        const reordered = db.questions
+          .filter((q) => q.exercice_id === exerciceId)
+          .sort(byOrderThenId);
+        reordered.forEach((q, idx) => {
+          q.ordre = idx;
+        });
+
+        touchDevoir(devoirId);
+        await saveDb();
+
+        const sortedCreated = created.slice().sort(byOrderThenId);
+        return jsonResponse(200, {
+          replaced_question_id: questionId,
+          created_question_ids: sortedCreated.map((q) => q.id),
+          created_count: sortedCreated.length,
+          copied_notes_per_question: notesOriginal.length,
+          split_index: oldIndex,
+        });
       }
     }
 
