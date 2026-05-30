@@ -207,6 +207,10 @@ function noteCellStyle(row) {
   return "background:hsl(" + hue + ", 90%, 50%);color:#111";
 }
 
+function buildCorrectionUrl(devoirId, etudiantId) {
+  return "corriger.html?devoir=" + encodeURIComponent(devoirId) + "&etudiant=" + encodeURIComponent(etudiantId) + "&source=suivi";
+}
+
 function renderTable() {
   const etudiants = filteredEtudiants();
   const devoirs = devoirsAvecNotes(etudiants)
@@ -245,7 +249,7 @@ function renderTable() {
       const cls = text ? "suivi-note-value" : "suivi-note-empty";
       const style = noteCellStyle(row);
       const styleAttr = style ? ' style="' + style + '"' : "";
-      return '<td class="' + cls + '"' + styleAttr + '>' + (text || '&nbsp;') + '</td>';
+      return '<td class="' + cls + ' suivi-note-click" data-devoir-id="' + Number(d.id) + '" data-etudiant-id="' + Number(e.id) + '" title="Ouvrir la correction"' + styleAttr + '>' + (text || '&nbsp;') + '</td>';
     }).join("");
 
     return '<tr>'
@@ -320,6 +324,15 @@ async function refreshAll() {
 document.getElementById("reload-btn").addEventListener("click", refreshAll);
 document.getElementById("filter-group-name").addEventListener("change", renderTable);
 document.getElementById("filter-year").addEventListener("change", renderTable);
+
+document.getElementById("suivi-zone").addEventListener("click", function(event){
+  const cell = event.target.closest("td.suivi-note-click[data-devoir-id][data-etudiant-id]");
+  if (!cell) return;
+  const devoir = cell.getAttribute("data-devoir-id");
+  const etudiant = cell.getAttribute("data-etudiant-id");
+  if (!devoir || !etudiant) return;
+  location.href = buildCorrectionUrl(devoir, etudiant);
+});
 
 (async function init(){
   initSyncNav({ afterPull: function(){ location.reload(); } });

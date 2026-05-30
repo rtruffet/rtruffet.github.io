@@ -1,4 +1,6 @@
 (function () {
+  const protocol = (window.location && window.location.protocol) || "";
+  if (protocol !== "http:" && protocol !== "https:") return;
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", async function () {
     try {

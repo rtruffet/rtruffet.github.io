@@ -89,12 +89,17 @@ const params = new URLSearchParams(location.search);
 const devoirId = params.get("id");
 const initialGroupFilter = params.get("groupe") || "";
 const detailZoneEl = document.getElementById("detail-zone");
+const perfDebug = params.get("perf") === "1";
 
 let currentDevoir = null;
 let currentResultats = [];
 let currentQuestionDefs = [];
 let currentSort = { key: "nom", dir: "asc" };
-let questionMetaById = new Map();
+let renderSeq = 0;
+let longTaskObserver = null;
+let rafRenderScheduled = false;
+let activeRenderToken = 0;
+const BODY_CHUNK_SIZE = 24;
 
 if (!devoirId) location.href = "devoirs.html";
 
@@ -181,7 +186,7 @@ function toggleSort(key) {
     currentSort.key = key;
     currentSort.dir = "asc";
   }
-  renderMatrix();
+  scheduleMatrixRender();
 }
 
 function baseCompare(a, b) {
@@ -276,10 +281,6 @@ async function loadDevoir() {
         });
     });
   currentQuestionDefs = questionDefs;
-  questionMetaById = new Map(questionDefs.map((q) => [Number(q.id), {
-    exoTitre: q.exoTitre,
-    enonce: q.enonce,
-  }]));
 }
 
 async function fetchResultats() {
@@ -320,9 +321,77 @@ function buildCorrectionUrl(etudiantId, questionId, groupeId) {
 }
 
 function scheduleMatrixRender() {
-  window.requestAnimationFrame(() => {
-    renderMatrix();
+  if (rafRenderScheduled) return;
+  rafRenderScheduled = true;
+  const label = `render total #${++renderSeq}`;
+  window.requestAnimationFrame(async () => {
+    rafRenderScheduled = false;
+    const start = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
+    console.time(label);
+    await renderMatrix(label);
+    console.timeEnd(label);
+
+    if (perfDebug) {
+      const afterRender = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
+
+      window.setTimeout(() => {
+        const t = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
+        const delay = t - afterRender;
+        console.log(`[detail-notes][perf] post-render event-loop delay=${delay.toFixed(2)}ms`);
+      }, 0);
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const endPaint = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
+          const paintLag = endPaint - start;
+          console.log(`[detail-notes][perf] render->2nd-frame=${paintLag.toFixed(2)}ms`);
+        });
+      });
+    }
   });
+}
+
+function nextMacrotask() {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+function syncStickyHeaderOffsets(tableEl) {
+  if (!tableEl) return;
+  const rows = tableEl.querySelectorAll("thead tr");
+  const h1 = rows[0] ? rows[0].getBoundingClientRect().height : 0;
+  const h2 = rows[1] ? rows[1].getBoundingClientRect().height : 0;
+  const h3 = rows[2] ? rows[2].getBoundingClientRect().height : 0;
+  tableEl.style.setProperty("--detail-head-h1", `${Math.max(0, h1).toFixed(3)}px`);
+  tableEl.style.setProperty("--detail-head-h2", `${Math.max(0, h2).toFixed(3)}px`);
+  tableEl.style.setProperty("--detail-head-h3", `${Math.max(0, h3).toFixed(3)}px`);
+}
+
+async function renderBodyInChunks(tbody, rowsData, renderToken) {
+  for (let i = 0; i < rowsData.length; i += BODY_CHUNK_SIZE) {
+    if (renderToken !== activeRenderToken) return false;
+
+    const chunk = rowsData.slice(i, i + BODY_CHUNK_SIZE);
+    const chunkHtml = chunk.map((row) => buildRowHtml(row)).join("");
+    tbody.insertAdjacentHTML("beforeend", chunkHtml);
+
+    await nextMacrotask();
+  }
+
+  return renderToken === activeRenderToken;
+}
+
+function initPerfObservers() {
+  if (!perfDebug) return;
+  if (typeof window === "undefined" || typeof PerformanceObserver === "undefined") return;
+  try {
+    longTaskObserver = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        console.warn(`[detail-notes][perf] Long task détectée: ${entry.duration.toFixed(2)}ms`);
+      }
+    });
+    longTaskObserver.observe({ entryTypes: ["longtask"] });
+  } catch (_err) {
+  }
 }
 
 function buildRowHtml(resultat) {
@@ -334,13 +403,16 @@ function buildRowHtml(resultat) {
     const sepEnd = q.exoIndex !== nextEx ? " ex-sep-end" : "";
     const noteData = getNoteDisplayData(notesMap, q);
     const styleAttr = noteData.style ? ` style="${noteData.style}"` : "";
-    return `<td class="matrix-note ${noteData.cssClass}${sepStart}${sepEnd}"${styleAttr} data-question-id="${q.id}" data-note-state="${noteData.state}">${noteData.text || "&nbsp;"}</td>`;
+    let suffix = "";
+    if (noteData.state === "empty") suffix = " : pas encore corrigée";
+    else if (noteData.state === "unanswered") suffix = " : non répondue";
+    const titleAttr = ` title="${escapeAttr(`${q.exoTitre} - ${q.enonce}${suffix}`)}"`;
+    return `<td class="matrix-note matrix-link-cell ${noteData.cssClass}${sepStart}${sepEnd}"${styleAttr}${titleAttr} data-student-id="${resultat.etudiant.id}" data-question-id="${q.id}">${noteData.text || "&nbsp;"}</td>`;
   }).join("");
 
   return `<tr>
-    <td class="matrix-name matrix-link-cell" data-student-id="${resultat.etudiant.id}">${resultat.etudiant.nom || ""}</td>
-    <td class="matrix-name matrix-link-cell" data-student-id="${resultat.etudiant.id}">${resultat.etudiant.prenom || ""}</td>
-    <td class="matrix-group">${resultat.groupe_nom || ""}</td>
+    <td class="matrix-name matrix-link-cell matrix-sticky-col-1" data-student-id="${resultat.etudiant.id}">${resultat.etudiant.nom || ""}</td>
+    <td class="matrix-name matrix-link-cell matrix-sticky-col-2" data-student-id="${resultat.etudiant.id}">${resultat.etudiant.prenom || ""}</td>
     ${detailCells}
     <td class="matrix-metric">${Number(resultat.note_totale || 0).toFixed(2)}</td>
     <td class="matrix-metric">${Number(resultat.bonus_abs || 0).toFixed(2)}</td>
@@ -351,20 +423,32 @@ function buildRowHtml(resultat) {
   </tr>`;
 }
 
-function renderMatrix() {
+async function renderMatrix(renderLabel) {
+  const perfNow = () => (typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now());
+  const renderToken = ++activeRenderToken;
+  const t0 = perfNow();
   const zone = detailZoneEl;
   let rowsData = currentResultats.slice();
 
+  const tFilterStart = perfNow();
   const grp = document.getElementById("filtre-groupe").value;
   if (grp) rowsData = rowsData.filter(r => String(r.groupe_id || "") === grp);
+  const tFilterEnd = perfNow();
 
+  const tSortStart = perfNow();
   rowsData.sort(compareRows);
+  const tSortEnd = perfNow();
 
   if (!rowsData.length) {
     zone.innerHTML = "<p style='color:#888'>Aucune donnée à afficher.</p>";
+    if (perfDebug) {
+      const totalMs = perfNow() - t0;
+      console.log(`[detail-notes][perf] ${renderLabel || "render"} - no-data total=${totalMs.toFixed(2)}ms`);
+    }
     return;
   }
 
+  const tBuildStart = perfNow();
   const headExo = currentQuestionDefs.map((q, i) => {
     const prevEx = i > 0 ? currentQuestionDefs[i - 1].exoIndex : null;
     const nextEx = i < currentQuestionDefs.length - 1 ? currentQuestionDefs[i + 1].exoIndex : null;
@@ -386,17 +470,16 @@ function renderMatrix() {
     const sepEnd = q.exoIndex !== nextEx ? " ex-sep-end" : "";
     return `<th class="matrix-sub${sepStart}${sepEnd}" title="${escapeAttr(q.enonce)}">${fmtNoteCell(q.poids)}</th>`;
   }).join("");
+  const tBuildEnd = perfNow();
 
-  const bodyRows = rowsData.map((row) => buildRowHtml(row)).join("");
-
+  const tDomShellStart = perfNow();
   zone.innerHTML = `
     <div class="detail-notes-scroll">
       <table class="detail-notes-table">
         <thead>
           <tr>
-            <th rowspan="3" class="matrix-sticky sortable" data-sort-key="nom">Nom${sortIndicator("nom")}</th>
-            <th rowspan="3" class="matrix-sticky sortable" data-sort-key="prenom">Prénom${sortIndicator("prenom")}</th>
-            <th rowspan="3" class="matrix-sticky sortable" data-sort-key="groupe">Groupe${sortIndicator("groupe")}</th>
+            <th rowspan="3" class="matrix-sticky sortable matrix-sticky-col-1" data-sort-key="nom">Nom${sortIndicator("nom")}</th>
+            <th rowspan="3" class="matrix-sticky sortable matrix-sticky-col-2" data-sort-key="prenom">Prénom${sortIndicator("prenom")}</th>
             ${headExo}
             <th rowspan="3" class="sortable" data-sort-key="total">Total brut${sortIndicator("total")}</th>
             <th rowspan="3" class="sortable" data-sort-key="bonus_abs">Bonus abs${sortIndicator("bonus_abs")}</th>
@@ -408,13 +491,68 @@ function renderMatrix() {
           <tr>${headQ}</tr>
           <tr>${headBareme}</tr>
         </thead>
-        <tbody>${bodyRows}</tbody>
+        <tbody id="detail-notes-tbody"></tbody>
       </table>
     </div>
   `;
+  const tDomShellEnd = perfNow();
 
+  const tableEl = zone.querySelector(".detail-notes-table");
+  syncStickyHeaderOffsets(tableEl);
+
+  if (renderToken !== activeRenderToken) return;
+
+  const tbody = document.getElementById("detail-notes-tbody");
+  if (!tbody) return;
+
+  const tDomRowsStart = perfNow();
+  const completed = await renderBodyInChunks(tbody, rowsData, renderToken);
+  const tDomRowsEnd = perfNow();
+  if (!completed) return;
+
+  const tMetaStart = perfNow();
   const surGlobal = rowsData.length ? Number(rowsData[0].poids_total || 0) : 0;
   document.getElementById("detail-meta").textContent = `${rowsData.length} étudiant(s) affiché(s) · ${currentQuestionDefs.length} question(s) · Total sur ${surGlobal.toFixed(2)}`;
+  const tMetaEnd = perfNow();
+
+  if (perfDebug) {
+    const totalMs = tMetaEnd - t0;
+    const filterMs = tFilterEnd - tFilterStart;
+    const sortMs = tSortEnd - tSortStart;
+    const buildMs = tBuildEnd - tBuildStart;
+    const domShellMs = tDomShellEnd - tDomShellStart;
+    const domRowsMs = tDomRowsEnd - tDomRowsStart;
+    const domMs = domShellMs + domRowsMs;
+    const metaMs = tMetaEnd - tMetaStart;
+    const cells = rowsData.length * currentQuestionDefs.length;
+    const perCellUs = cells > 0 ? (buildMs * 1000) / cells : 0;
+
+    console.table({
+      rows: rowsData.length,
+      questions: currentQuestionDefs.length,
+      cells,
+      filter_ms: Number(filterMs.toFixed(2)),
+      sort_ms: Number(sortMs.toFixed(2)),
+      build_html_ms: Number(buildMs.toFixed(2)),
+      inject_dom_shell_ms: Number(domShellMs.toFixed(2)),
+      inject_dom_rows_ms: Number(domRowsMs.toFixed(2)),
+      inject_dom_total_ms: Number(domMs.toFixed(2)),
+      meta_ms: Number(metaMs.toFixed(2)),
+      total_ms: Number(totalMs.toFixed(2)),
+      build_us_per_cell: Number(perCellUs.toFixed(2)),
+      chunk_size_rows: BODY_CHUNK_SIZE,
+    });
+
+    if (buildMs > domMs * 1.5) {
+      console.log("[detail-notes][perf] Suspect principal: construction HTML JS (buildRowHtml + map/join)");
+    } else if (domRowsMs > buildMs * 1.2) {
+      console.log("[detail-notes][perf] Suspect principal: ajout des lignes DOM/reflow (tbody chunked)");
+    } else if (domShellMs > buildMs * 1.2) {
+      console.log("[detail-notes][perf] Suspect principal: injection structure DOM (thead/table)");
+    } else {
+      console.log("[detail-notes][perf] Charge partagée entre build JS et injection DOM");
+    }
+  }
 }
 
 async function loadResultats() {
@@ -464,6 +602,16 @@ detailZoneEl.addEventListener("click", (event) => {
     return;
   }
 
+  const clickableNoteCell = event.target.closest("td.matrix-note.matrix-link-cell[data-student-id][data-question-id]");
+  if (clickableNoteCell && detailZoneEl.contains(clickableNoteCell)) {
+    const studentId = clickableNoteCell.getAttribute("data-student-id");
+    const questionId = clickableNoteCell.getAttribute("data-question-id");
+    const groupId = document.getElementById("filtre-groupe").value;
+    const href = buildCorrectionUrl(studentId, questionId, groupId);
+    if (href) window.location.href = href;
+    return;
+  }
+
   const clickableNameCell = event.target.closest("td.matrix-name.matrix-link-cell[data-student-id]");
   if (clickableNameCell && detailZoneEl.contains(clickableNameCell)) {
     const studentId = clickableNameCell.getAttribute("data-student-id");
@@ -474,26 +622,12 @@ detailZoneEl.addEventListener("click", (event) => {
   }
 });
 
-detailZoneEl.addEventListener("mouseover", (event) => {
-  const noteCell = event.target.closest("td.matrix-note[data-question-id][data-note-state]");
-  if (!noteCell || !detailZoneEl.contains(noteCell) || noteCell.title) return;
-  const questionId = Number(noteCell.getAttribute("data-question-id"));
-  const state = noteCell.getAttribute("data-note-state");
-  const meta = questionMetaById.get(questionId);
-  if (!meta) return;
-
-  let suffix = "";
-  if (state === "empty") suffix = " : pas encore corrigée";
-  else if (state === "unanswered") suffix = " : non répondue";
-
-  noteCell.title = `${meta.exoTitre} - ${meta.enonce}${suffix}`;
-});
-
 document.getElementById("refresh-btn").addEventListener("click", loadResultats);
-document.getElementById("filtre-groupe").addEventListener("change", renderMatrix);
+document.getElementById("filtre-groupe").addEventListener("change", scheduleMatrixRender);
 document.getElementById("csv-btn").addEventListener("click", exportCsv);
 
 init();
+initPerfObservers();
 </script>
 </body>
 </html>
