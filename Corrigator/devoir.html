@@ -415,7 +415,8 @@ function renderQuestions(exerciceId, questions) {
                onchange="updateQuestion(${q.id}, {enonce: this.value})">
       </td>
       <td style="padding:.3rem .5rem;border-bottom:1px solid #f0f0f0;text-align:center">
-        <input type="number" value="${q.poids}" min="0" step="0.5" style="width:58px;text-align:center"
+         <input type="number" value="${q.poids}" min="0" step="0.5" style="width:58px;text-align:center" data-role="q-poids"
+           onkeydown="handlePoidsEnter(event, this)"
                onchange="updateQuestion(${q.id}, {poids: parseFloat(this.value)})">
       </td>
       <td style="padding:.3rem .15rem;border-bottom:1px solid #f0f0f0;text-align:center">
@@ -525,6 +526,22 @@ async function splitQuestion(id) {
   toast(`Question divisée en ${out.created_count || count}`);
   await loadDevoir();
   await loadResultats();
+}
+
+function focusNextPoidsInput(currentInput) {
+  const inputs = Array.from(document.querySelectorAll('#exercices-zone input[data-role="q-poids"]'));
+  const idx = inputs.indexOf(currentInput);
+  if (idx < 0) return;
+  const next = inputs[idx + 1];
+  if (!next) return;
+  next.focus();
+  next.select?.();
+}
+
+function handlePoidsEnter(event, inputEl) {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  focusNextPoidsInput(inputEl);
 }
 
 function wait(ms) {
