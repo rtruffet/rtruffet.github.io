@@ -56,9 +56,34 @@
 <main>
   <section class="card" style="margin-bottom:1rem">
     <div class="home-resume-card" id="home-resume-card">
-      <span class="home-shortcut-tag">Reprise rapide</span>
+      <div class="home-resume-head">
+        <span class="home-shortcut-tag">Reprise rapide</span>
+        <span class="home-resume-state" id="resume-state-pill">Chargement</span>
+      </div>
       <h3 id="resume-title">Dernier devoir</h3>
-      <p id="resume-subtitle" class="home-resume-text">Chargement…</p>
+      <p id="resume-activity" class="home-resume-text">Chargement…</p>
+
+      <div class="home-resume-dashboard" id="resume-dashboard" aria-live="polite">
+        <div class="home-resume-kpi">
+          <span class="home-resume-kpi-label">Copies corrigées</span>
+          <strong id="resume-copies-value">-/-</strong>
+        </div>
+        <div class="home-resume-kpi">
+          <span class="home-resume-kpi-label">Moyenne actuelle</span>
+          <strong id="resume-average-value">-/20</strong>
+        </div>
+      </div>
+
+      <div class="home-resume-progress-wrap" id="resume-progress-wrap">
+        <div class="home-resume-progress-meta">
+          <span>Progression de correction</span>
+          <strong id="resume-progress-value">0%</strong>
+        </div>
+        <div class="home-resume-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="resume-progress-track">
+          <div class="home-resume-progress-fill" id="resume-progress-fill"></div>
+        </div>
+      </div>
+
       <div class="home-resume-actions" id="resume-actions" style="display:none">
         <a id="resume-manage-link" href="#" class="btn btn-primary btn-sm">Gérer</a>
         <a id="resume-correct-link" href="#" class="btn btn-success btn-sm">Corriger</a>
@@ -263,6 +288,11 @@ function fmtStamp(ms) {
   }
 }
 
+function fmtNoteFr(value) {
+  if (!Number.isFinite(value)) return "-";
+  return value.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -306,9 +336,15 @@ function renderRecentDevoirs(devoirs) {
   }
 }
 
-function renderResumeCard(devoirs) {
+async function renderResumeCard(devoirs) {
   const title = document.getElementById("resume-title");
-  const subtitle = document.getElementById("resume-subtitle");
+  const activity = document.getElementById("resume-activity");
+  const statePill = document.getElementById("resume-state-pill");
+  const copiesValue = document.getElementById("resume-copies-value");
+  const averageValue = document.getElementById("resume-average-value");
+  const progressValue = document.getElementById("resume-progress-value");
+  const progressFill = document.getElementById("resume-progress-fill");
+  const progressTrack = document.getElementById("resume-progress-track");
   const actions = document.getElementById("resume-actions");
   const manageLink = document.getElementById("resume-manage-link");
   const correctLink = document.getElementById("resume-correct-link");
@@ -316,7 +352,13 @@ function renderResumeCard(devoirs) {
 
   if (!devoirs.length) {
     title.textContent = "Dernier devoir";
-    subtitle.textContent = "Aucun devoir disponible pour le moment.";
+    activity.textContent = "Aucun devoir disponible pour le moment.";
+    statePill.textContent = "Aucun";
+    copiesValue.textContent = "-/-";
+    averageValue.textContent = "-/20";
+    progressValue.textContent = "0%";
+    progressFill.style.width = "0%";
+    progressTrack.setAttribute("aria-valuenow", "0");
     actions.style.display = "none";
     return;
   }
@@ -326,7 +368,35 @@ function renderResumeCard(devoirs) {
     .sort((a, b) => (Number(b.updated_at_ms || 0) - Number(a.updated_at_ms || 0)) || (Number(b.id) - Number(a.id)))[0];
 
   title.textContent = latest.titre;
-  subtitle.textContent = `Dernière activité : ${fmtStamp(latest.updated_at_ms)}`;
+  statePill.textContent = "Actif";
+  activity.textContent = `Dernière activité : ${fmtStamp(latest.updated_at_ms)}`;
+
+  let copiesCorrigees = 0;
+  let totalCopies = 0;
+  let moyenne = NaN;
+
+  try {
+    const resultatsRes = await fetch(`${API}/devoirs/${latest.id}/resultats`);
+    if (resultatsRes.ok) {
+      const resultats = await resultatsRes.json();
+      totalCopies = Array.isArray(resultats) ? resultats.length : 0;
+      const corrigees = (Array.isArray(resultats) ? resultats : []).filter((r) => r && r.copie_corrigee);
+      copiesCorrigees = corrigees.length;
+      moyenne = copiesCorrigees
+        ? corrigees.reduce((acc, r) => acc + Number(r.note_sur_20 || 0), 0) / copiesCorrigees
+        : NaN;
+    }
+  } catch (_err) {
+    // On conserve la reprise rapide même si le calcul des stats échoue.
+  }
+
+  const ratioPct = totalCopies > 0 ? Math.round((copiesCorrigees / totalCopies) * 100) : 0;
+  copiesValue.textContent = `${copiesCorrigees}/${totalCopies}`;
+  averageValue.textContent = copiesCorrigees ? `${fmtNoteFr(moyenne)}/20` : "-/20";
+  progressValue.textContent = `${ratioPct}%`;
+  progressFill.style.width = `${ratioPct}%`;
+  progressTrack.setAttribute("aria-valuenow", String(ratioPct));
+
   manageLink.href = `devoir.html?id=${latest.id}`;
   correctLink.href = `corriger.html?devoir=${latest.id}`;
   detailLink.href = `detail-notes.html?id=${latest.id}`;
@@ -341,13 +411,19 @@ async function loadRecentDevoirs() {
     }
 
     const devoirs = await devoirsRes.json();
-    renderResumeCard(devoirs);
+    await renderResumeCard(devoirs);
     renderRecentDevoirs(devoirs);
   } catch (err) {
     document.getElementById("recent-devoirs").innerHTML = `<li style="color:#b42318">${err.message}</li>`;
     document.getElementById("recent-subtitle").textContent = "Impossible de charger les devoirs récents";
     document.getElementById("resume-title").textContent = "Dernier devoir";
-    document.getElementById("resume-subtitle").textContent = "Impossible de charger cette reprise rapide.";
+    document.getElementById("resume-activity").textContent = "Impossible de charger cette reprise rapide.";
+    document.getElementById("resume-state-pill").textContent = "Erreur";
+    document.getElementById("resume-copies-value").textContent = "-/-";
+    document.getElementById("resume-average-value").textContent = "-/20";
+    document.getElementById("resume-progress-value").textContent = "0%";
+    document.getElementById("resume-progress-fill").style.width = "0%";
+    document.getElementById("resume-progress-track").setAttribute("aria-valuenow", "0");
     document.getElementById("resume-actions").style.display = "none";
   }
 }
