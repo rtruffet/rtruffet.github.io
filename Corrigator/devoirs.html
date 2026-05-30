@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Corrigator – Accueil</title>
+  <title>Corrigator – Devoirs</title>
   <link rel="icon" type="image/png" href="corrigator_icon.png">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0d4ea0">
@@ -54,49 +54,30 @@
 </script>
 
 <main>
-  <section class="card" style="margin-bottom:1rem">
-    <div class="home-resume-card" id="home-resume-card">
-      <span class="home-shortcut-tag">Reprise rapide</span>
-      <h3 id="resume-title">Dernier devoir</h3>
-      <p id="resume-subtitle" class="home-resume-text">Chargement…</p>
-      <div class="home-resume-actions" id="resume-actions" style="display:none">
-        <a id="resume-manage-link" href="#" class="btn btn-primary btn-sm">Gérer</a>
-        <a id="resume-correct-link" href="#" class="btn btn-success btn-sm">Corriger</a>
-        <a id="resume-detail-link" href="#" class="btn btn-neutral btn-sm">Détail</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="home-shortcuts">
-    <a class="card home-shortcut-card" href="devoirs.html">
-      <span class="home-shortcut-tag">Gestion</span>
-      <h2>Devoirs</h2>
-      <p>Créer, organiser, corriger et exporter les devoirs.</p>
-    </a>
-    <a class="card home-shortcut-card" href="etudiants.html">
-      <span class="home-shortcut-tag">Gestion</span>
-      <h2>Étudiants et groupes</h2>
-      <p>Gérer les classes, importer des listes et suivre les affectations.</p>
-    </a>
-    <a class="card home-shortcut-card" href="aide.html">
-      <span class="home-shortcut-tag">Référence</span>
-      <h2>Aide</h2>
-      <p>Retrouver les consignes d'usage, le mode hors ligne et la sync.</p>
-    </a>
-  </section>
 
   <div class="card">
-    <div class="home-section-head">
-      <div>
-        <h2 style="margin-bottom:.25rem">Devoirs récents</h2>
-        <p id="recent-subtitle" style="color:#5a6472;font-size:.9rem">Chargement…</p>
-      </div>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-        <button class="btn btn-neutral btn-sm" onclick="loadRecentDevoirs()">Actualiser</button>
-        <a class="btn btn-primary btn-sm" href="devoirs.html">Voir tous les devoirs</a>
-      </div>
+    <h2>Nouveau devoir</h2>
+    <div class="form-row">
+      <input type="text" id="devoir-titre" placeholder="Titre (ex: DS01)">
+      <input type="text" id="devoir-desc"  placeholder="Description (optionnel)">
     </div>
-    <ul class="devoir-list home-recent-list" id="recent-devoirs">
+    <div class="form-row" style="align-items:center">
+      <label for="devoir-nb-exos" style="font-size:.9rem;color:#555">Nombre d'exercices</label>
+      <input type="number" id="devoir-nb-exos" min="1" step="1" value="1" style="max-width:120px">
+      <button class="btn btn-neutral" onclick="renderExosInputs()">Générer</button>
+    </div>
+    <div id="devoir-exos-builder" style="margin:.5rem 0 1rem 0"></div>
+    <div class="form-row">
+      <button class="btn btn-primary" onclick="createDevoirWithStructure()">Créer le devoir</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.8rem">
+      <h2 style="margin:0">Devoirs existants</h2>
+      <button class="btn btn-neutral btn-sm" onclick="loadDevoirs()">Actualiser</button>
+    </div>
+    <ul class="devoir-list" id="devoir-list">
       <li style="color:#888">Chargement…</li>
     </ul>
   </div>
@@ -240,7 +221,7 @@ async function syncPull() {
 
     toast("Pull terminé (base locale remplacée)", 2800);
     await loadSyncStatus();
-    await loadRecentDevoirs();
+    await loadDevoirs();
   } catch (err) {
     toast(`Erreur pull: ${err.message}`, 3500);
   } finally {
@@ -248,112 +229,175 @@ async function syncPull() {
   }
 }
 
-function fmtStamp(ms) {
-  const stamp = Number(ms || 0);
-  if (!stamp) return "Activité antérieure";
-  try {
-    return new Date(stamp).toLocaleString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch (_err) {
-    return "Activité récente";
-  }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function renderRecentDevoirs(devoirs) {
-  const ul = document.getElementById("recent-devoirs");
+async function loadDevoirs() {
+  const res = await fetch(`${API}/devoirs`);
+  const devoirs = await res.json();
+  const ul = document.getElementById("devoir-list");
   ul.innerHTML = "";
 
-  if (!devoirs.length) {
+  if (devoirs.length === 0) {
     ul.innerHTML = "<li style='color:#888'>Aucun devoir pour l'instant.</li>";
-    document.getElementById("recent-subtitle").textContent = "Commencez par créer un devoir depuis la page dédiée.";
     return;
   }
 
-  const recents = devoirs
-    .slice()
-    .sort((a, b) => (Number(b.updated_at_ms || 0) - Number(a.updated_at_ms || 0)) || (Number(b.id) - Number(a.id)))
-    .slice(0, 6);
-
-  document.getElementById("recent-subtitle").textContent = `${recents.length} devoir(s) les plus récents`;
-
-  for (const d of recents) {
+  for (const d of devoirs) {
     const li = document.createElement("li");
-    const detail = d.description ? `<div class="home-recent-desc">${escapeHtml(d.description)}</div>` : "";
     li.innerHTML = `
-      <div class="home-recent-meta">
-        <span class="devoir-title">${escapeHtml(d.titre)}</span>
-        <span class="home-recent-stamp">${fmtStamp(d.updated_at_ms)}</span>
-        ${detail}
-      </div>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <span class="devoir-title">${d.titre}</span>
+      <div style="display:flex;gap:.5rem">
         <a href="devoir.html?id=${d.id}" class="btn btn-primary btn-sm">Gérer</a>
         <a href="corriger.html?devoir=${d.id}" class="btn btn-success btn-sm">Corriger</a>
         <a href="detail-notes.html?id=${d.id}" class="btn btn-neutral btn-sm">Détail</a>
+        <button class="btn btn-neutral btn-sm" onclick="exportDevoirCsv(${d.id})">CSV</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteDevoir(${d.id})">✕</button>
       </div>`;
     ul.appendChild(li);
   }
 }
 
-function renderResumeCard(devoirs) {
-  const title = document.getElementById("resume-title");
-  const subtitle = document.getElementById("resume-subtitle");
-  const actions = document.getElementById("resume-actions");
-  const manageLink = document.getElementById("resume-manage-link");
-  const correctLink = document.getElementById("resume-correct-link");
-  const detailLink = document.getElementById("resume-detail-link");
+async function exportDevoirCsv(devoirId) {
+  try {
+    const res = await fetch(`${API}/devoirs/${devoirId}/export-csv`);
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `resultats_${devoirId}.csv`;
 
-  if (!devoirs.length) {
-    title.textContent = "Dernier devoir";
-    subtitle.textContent = "Aucun devoir disponible pour le moment.";
-    actions.style.display = "none";
+    const a = document.createElement("a");
+    const objectUrl = URL.createObjectURL(blob);
+    a.href = objectUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(objectUrl);
+  } catch (err) {
+    toast(`Erreur export CSV: ${err.message}`, 3200);
+  }
+}
+
+async function createDevoir() {
+  const titre = document.getElementById("devoir-titre").value.trim();
+  if (!titre) { toast("Entrer un titre"); return; }
+  const desc = document.getElementById("devoir-desc").value.trim();
+
+  const res = await fetch(`${API}/devoirs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ titre, description: desc || null }),
+  });
+  if (res.ok) {
+    document.getElementById("devoir-titre").value = "";
+    document.getElementById("devoir-desc").value = "";
+    toast("Devoir créé !");
+    await loadDevoirs();
+  } else {
+    toast("Erreur lors de la création");
+  }
+}
+
+function renderExosInputs() {
+  const nbExos = parseInt(document.getElementById("devoir-nb-exos").value, 10);
+  if (!Number.isInteger(nbExos) || nbExos < 1) {
+    toast("Le nombre d'exercices doit être >= 1");
     return;
   }
 
-  const latest = devoirs
-    .slice()
-    .sort((a, b) => (Number(b.updated_at_ms || 0) - Number(a.updated_at_ms || 0)) || (Number(b.id) - Number(a.id)))[0];
+  const builder = document.getElementById("devoir-exos-builder");
+  builder.innerHTML = "";
 
-  title.textContent = latest.titre;
-  subtitle.textContent = `Dernière activité : ${fmtStamp(latest.updated_at_ms)}`;
-  manageLink.href = `devoir.html?id=${latest.id}`;
-  correctLink.href = `corriger.html?devoir=${latest.id}`;
-  detailLink.href = `detail-notes.html?id=${latest.id}`;
-  actions.style.display = "flex";
-}
-
-async function loadRecentDevoirs() {
-  try {
-    const devoirsRes = await fetch(`${API}/devoirs`);
-    if (!devoirsRes.ok) {
-      throw new Error("chargement incomplet");
-    }
-
-    const devoirs = await devoirsRes.json();
-    renderResumeCard(devoirs);
-    renderRecentDevoirs(devoirs);
-  } catch (err) {
-    document.getElementById("recent-devoirs").innerHTML = `<li style="color:#b42318">${err.message}</li>`;
-    document.getElementById("recent-subtitle").textContent = "Impossible de charger les devoirs récents";
-    document.getElementById("resume-title").textContent = "Dernier devoir";
-    document.getElementById("resume-subtitle").textContent = "Impossible de charger cette reprise rapide.";
-    document.getElementById("resume-actions").style.display = "none";
+  for (let i = 1; i <= nbExos; i++) {
+    const row = document.createElement("div");
+    row.className = "form-row";
+    row.style.marginBottom = ".45rem";
+    row.innerHTML = `
+      <strong style="min-width:90px;align-self:center">Exercice ${i}</strong>
+      <input type="text" id="exo-titre-${i}" placeholder="Titre (optionnel)" value="Exercice ${i}">
+      <input type="number" id="exo-nb-q-${i}" min="1" step="1" value="1" style="max-width:120px">
+      <span style="align-self:center;color:#666;font-size:.9rem">question(s)</span>
+    `;
+    builder.appendChild(row);
   }
 }
 
+async function createDevoirWithStructure() {
+  const titre = document.getElementById("devoir-titre").value.trim();
+  if (!titre) { toast("Entrer un titre"); return; }
+
+  const nbExos = parseInt(document.getElementById("devoir-nb-exos").value, 10);
+  if (!Number.isInteger(nbExos) || nbExos < 1) {
+    toast("Le nombre d'exercices doit être >= 1");
+    return;
+  }
+
+  const structure = [];
+  for (let i = 1; i <= nbExos; i++) {
+    const titreExo = document.getElementById(`exo-titre-${i}`)?.value.trim() || `Exercice ${i}`;
+    const nbQ = parseInt(document.getElementById(`exo-nb-q-${i}`)?.value, 10);
+    if (!Number.isInteger(nbQ) || nbQ < 1) {
+      toast(`Exercice ${i}: nombre de questions invalide`);
+      return;
+    }
+    structure.push({ titreExo, nbQ, ordreExo: i - 1 });
+  }
+
+  const desc = document.getElementById("devoir-desc").value.trim();
+  const resDevoir = await fetch(`${API}/devoirs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ titre, description: desc || null }),
+  });
+
+  if (!resDevoir.ok) {
+    toast("Erreur lors de la création du devoir");
+    return;
+  }
+
+  const devoir = await resDevoir.json();
+
+  for (const exo of structure) {
+    const resExo = await fetch(`${API}/devoirs/${devoir.id}/exercices`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titre: exo.titreExo, ordre: exo.ordreExo }),
+    });
+
+    if (!resExo.ok) {
+      toast("Devoir créé, mais erreur sur les exercices");
+      await loadDevoirs();
+      return;
+    }
+
+    const exoCreated = await resExo.json();
+    for (let q = 1; q <= exo.nbQ; q++) {
+      await fetch(`${API}/exercices/${exoCreated.id}/questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enonce: `Question ${q}`,
+          poids: 1,
+          ordre: q - 1,
+        }),
+      });
+    }
+  }
+
+  document.getElementById("devoir-titre").value = "";
+  document.getElementById("devoir-desc").value = "";
+  document.getElementById("devoir-nb-exos").value = "1";
+  renderExosInputs();
+  toast("Devoir et structure créés !");
+  await loadDevoirs();
+}
+
+async function deleteDevoir(id) {
+  if (!confirm("Supprimer ce devoir et toutes ses notes ?")) return;
+  await fetch(`${API}/devoirs/${id}`, { method: "DELETE" });
+  await loadDevoirs();
+}
+
+renderExosInputs();
 loadSyncStatus();
-loadRecentDevoirs();
+loadDevoirs();
 </script>
 </body>
 </html>

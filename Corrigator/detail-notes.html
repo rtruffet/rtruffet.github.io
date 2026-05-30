@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corrigator – Détail des notes</title>
+  <link rel="icon" type="image/png" href="corrigator_icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0d4ea0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand-row">
+    <h1 class="brand">
+      <a href="index.html" aria-label="Accueil Corrigator">
+        <img src="corrigator_logo.png" alt="Corrigator" class="brand-logo">
+      </a>
+    </h1>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
+  </div>
+  <div class="nav-collapse" id="nav-collapse">
+    <a href="index.html">Accueil</a>
+    <a href="devoirs.html">Devoirs</a>
+    <a href="etudiants.html">Étudiants</a>
+    <a href="suivi-resultats.html">Suivi</a>
+    <a href="aide.html">Aide</a>
+    <div class="nav-devoir-title" id="devoir-titre">Chargement…</div>
+    <div class="nav-sync-actions">
+      <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()" style="display:none">Pull</button>
+      <button id="sync-push-btn" class="btn btn-primary btn-sm" onclick="syncPush()" style="display:none">Push</button>
+      <span id="sync-status" class="nav-sync-status">Etat sync…</span>
+    </div>
+  </div>
+</nav>
+<script>
+(function(){
+  var toggle=document.getElementById('nav-toggle');
+  var nav=toggle&&toggle.closest('nav');
+  if(!toggle||!nav)return;
+  toggle.addEventListener('click',function(){
+    var open=nav.classList.toggle('nav-open');
+    toggle.setAttribute('aria-expanded',open);
+    toggle.textContent=open?'✕':'☰';
+  });
+  document.querySelectorAll('#nav-collapse a').forEach(function(a){
+    a.addEventListener('click',function(){
+      nav.classList.remove('nav-open');
+      toggle.textContent='☰';
+      toggle.setAttribute('aria-expanded','false');
+    });
+  });
+})();
+</script>
+
+<main class="detail-notes-main">
+  <div class="card detail-notes-toolbar">
+    <div class="detail-notes-toolbar-left">
+      <h2>Détail des notes</h2>
+      <p id="detail-meta" style="color:#5a6472;font-size:.9rem">Chargement…</p>
+    </div>
+    <div class="detail-notes-toolbar-right">
+      <label for="filtre-groupe" style="font-size:.85rem;color:#555">Filtre groupe</label>
+      <select id="filtre-groupe" style="padding:.35rem .75rem;border:1px solid #ccc;border-radius:6px;font-size:.85rem"></select>
+      <button class="btn btn-neutral btn-sm" id="refresh-btn">Actualiser</button>
+      <a class="btn btn-primary btn-sm" id="manage-link" href="#">Gérer le devoir</a>
+      <button class="btn btn-success btn-sm" id="csv-btn">Exporter CSV</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="detail-zone" class="detail-notes-zone">
+      <p style="color:#888">Chargement…</p>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script src="dropbox-sync.js"></script>
+<script src="local-api.js"></script>
+<script src="pwa-register.js"></script>
+<script src="sync-nav.js"></script>
+<script src="dropbox-config-ui.js"></script>
+<script>
+const API = "http://localhost:8000";
+const params = new URLSearchParams(location.search);
+const devoirId = params.get("id");
+const initialGroupFilter = params.get("groupe") || "";
+const detailZoneEl = document.getElementById("detail-zone");
+
+let currentDevoir = null;
+let currentResultats = [];
+let currentQuestionDefs = [];
+let currentSort = { key: "nom", dir: "asc" };
+let questionMetaById = new Map();
+
+if (!devoirId) location.href = "devoirs.html";
+
+function toast(msg, duration = 2000) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), duration);
+}
+
+function fmtNoteCell(v) {
+  if (v == null || Number.isNaN(Number(v))) return "x";
+  const n = Number(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.00$/, "").replace(/(\.[1-9])0$/, "$1");
+}
+
+function buildNotesMap(resultat) {
+  return new Map((resultat.notes || []).map(n => [Number(n.question_id), n.valeur == null ? null : Number(n.valeur)]));
+}
+
+function prepareResultats(rows) {
+  return rows.map((row) => Object.assign(row, {
+    _notesMap: buildNotesMap(row),
+  }));
+}
+
+function getNoteDisplayData(notesMap, questionDef) {
+  if (!notesMap.has(questionDef.id)) {
+    return {
+      text: "",
+      cssClass: "matrix-note-empty",
+      style: "",
+      state: "empty",
+      sortValue: undefined,
+    };
+  }
+
+  const rawValue = notesMap.get(questionDef.id);
+  if (rawValue == null) {
+    return {
+      text: "x",
+      cssClass: "matrix-note-unanswered",
+      style: "",
+      state: "unanswered",
+      sortValue: null,
+    };
+  }
+
+  return {
+    text: fmtNoteCell(rawValue),
+    cssClass: "",
+    style: getCellStyle(rawValue),
+    state: "answered",
+    sortValue: rawValue,
+  };
+}
+
+function getCellStyle(v) {
+  if (v == null || Number.isNaN(Number(v))) {
+    return "background:#d2d5db;color:#222";
+  }
+  const n = Math.max(0, Math.min(1, Number(v)));
+  const hue = Math.round(n * 120);
+  return `background:hsl(${hue}, 90%, 50%);color:#111`;
+}
+
+function escapeAttr(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function sortIndicator(key) {
+  if (currentSort.key !== key) return "";
+  return currentSort.dir === "asc" ? " ↑" : " ↓";
+}
+
+function toggleSort(key) {
+  if (currentSort.key === key) {
+    currentSort.dir = currentSort.dir === "asc" ? "desc" : "asc";
+  } else {
+    currentSort.key = key;
+    currentSort.dir = "asc";
+  }
+  renderMatrix();
+}
+
+function baseCompare(a, b) {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b), "fr", { sensitivity: "base" });
+}
+
+function compareRows(a, b) {
+  const key = currentSort.key;
+  const dir = currentSort.dir === "asc" ? 1 : -1;
+  let va;
+  let vb;
+
+  if (key === "nom") {
+    va = `${a.etudiant.nom || ""} ${a.etudiant.prenom || ""}`;
+    vb = `${b.etudiant.nom || ""} ${b.etudiant.prenom || ""}`;
+  } else if (key === "prenom") {
+    va = `${a.etudiant.prenom || ""} ${a.etudiant.nom || ""}`;
+    vb = `${b.etudiant.prenom || ""} ${b.etudiant.nom || ""}`;
+  } else if (key === "groupe") {
+    va = String(a.groupe_nom || "");
+    vb = String(b.groupe_nom || "");
+  } else if (key === "total") {
+    va = Number(a.note_totale || 0);
+    vb = Number(b.note_totale || 0);
+  } else if (key === "bonus_abs") {
+    va = Number(a.bonus_abs || 0);
+    vb = Number(b.bonus_abs || 0);
+  } else if (key === "bonus_pct") {
+    va = Number(a.bonus_pct || 0);
+    vb = Number(b.bonus_pct || 0);
+  } else if (key === "rehausse") {
+    va = Number(a.rehausse_groupe_pct || 0);
+    vb = Number(b.rehausse_groupe_pct || 0);
+  } else if (key === "note20") {
+    va = Number(a.note_sur_20 || 0);
+    vb = Number(b.note_sur_20 || 0);
+  } else if (key === "rang") {
+    va = (a.classement_groupe == null) ? Number.POSITIVE_INFINITY : Number(a.classement_groupe);
+    vb = (b.classement_groupe == null) ? Number.POSITIVE_INFINITY : Number(b.classement_groupe);
+  } else if (key.startsWith("q:")) {
+    const qid = Number(key.slice(2));
+    const mapA = a._notesMap || buildNotesMap(a);
+    const mapB = b._notesMap || buildNotesMap(b);
+    va = mapA.has(qid) ? mapA.get(qid) : undefined;
+    vb = mapB.has(qid) ? mapB.get(qid) : undefined;
+  } else {
+    va = `${a.etudiant.nom || ""} ${a.etudiant.prenom || ""}`;
+    vb = `${b.etudiant.nom || ""} ${b.etudiant.prenom || ""}`;
+  }
+
+  const cmp = baseCompare(va, vb);
+  if (cmp !== 0) return cmp * dir;
+
+  const da = `${a.etudiant.nom || ""} ${a.etudiant.prenom || ""}`;
+  const db = `${b.etudiant.nom || ""} ${b.etudiant.prenom || ""}`;
+  return da.localeCompare(db, "fr", { sensitivity: "base" });
+}
+
+async function loadDevoir() {
+  const res = await fetch(`${API}/devoirs/${devoirId}`);
+  if (!res.ok) {
+    location.href = "devoirs.html";
+    return;
+  }
+  currentDevoir = await res.json();
+  document.title = `Corrigator – Détail ${currentDevoir.titre}`;
+  document.getElementById("devoir-titre").textContent = currentDevoir.titre;
+  document.getElementById("devoir-titre").title = currentDevoir.description || currentDevoir.titre;
+  document.getElementById("manage-link").href = `devoir.html?id=${devoirId}`;
+
+  const questionDefs = [];
+  (currentDevoir.exercices || [])
+    .slice()
+    .sort((a, b) => Number(a.ordre || 0) - Number(b.ordre || 0))
+    .forEach((exo, exoIndex) => {
+      (exo.questions || [])
+        .slice()
+        .sort((a, b) => Number(a.ordre || 0) - Number(b.ordre || 0))
+        .forEach((q, qIndex) => {
+          questionDefs.push({
+            id: q.id,
+            exoTitre: exo.titre || `Exercice ${exoIndex + 1}`,
+            exoIndex: exoIndex + 1,
+            qIndex: qIndex + 1,
+            poids: Number(q.poids || 1),
+            enonce: String(q.enonce || `Question ${qIndex + 1}`),
+          });
+        });
+    });
+  currentQuestionDefs = questionDefs;
+  questionMetaById = new Map(questionDefs.map((q) => [Number(q.id), {
+    exoTitre: q.exoTitre,
+    enonce: q.enonce,
+  }]));
+}
+
+async function fetchResultats() {
+  const res = await fetch(`${API}/devoirs/${devoirId}/resultats`);
+  if (!res.ok) throw new Error("Impossible de charger les résultats");
+  return res.json();
+}
+
+function buildGroupFilter(resultats) {
+  const select = document.getElementById("filtre-groupe");
+  const previous = select.value || initialGroupFilter;
+  const seen = new Set();
+  const groupes = [];
+  for (const r of resultats) {
+    const gid = Number(r.groupe_id || 0);
+    const label = String(r.groupe_nom || "").trim();
+    if (!gid || !label || seen.has(gid)) continue;
+    seen.add(gid);
+    groupes.push({ id: gid, label });
+  }
+  groupes.sort((a, b) => a.label.localeCompare(b.label, "fr", { sensitivity: "base" }));
+
+  select.innerHTML = `<option value="">Tous les groupes</option>${groupes.map(g => `<option value="${g.id}">${g.label}</option>`).join("")}`;
+  if (groupes.some((g) => String(g.id) === String(previous))) {
+    select.value = previous;
+  }
+}
+
+function buildCorrectionUrl(etudiantId, questionId, groupeId) {
+  const paramsOut = [
+    `devoir=${encodeURIComponent(devoirId)}`,
+    `etudiant=${encodeURIComponent(etudiantId)}`,
+    "source=detail",
+  ];
+  if (questionId != null) paramsOut.push(`question=${encodeURIComponent(questionId)}`);
+  if (groupeId) paramsOut.push(`groupe=${encodeURIComponent(groupeId)}`);
+  return `corriger.html?${paramsOut.join("&")}`;
+}
+
+function scheduleMatrixRender() {
+  window.requestAnimationFrame(() => {
+    renderMatrix();
+  });
+}
+
+function buildRowHtml(resultat) {
+  const notesMap = resultat._notesMap || buildNotesMap(resultat);
+  const detailCells = currentQuestionDefs.map((q, i) => {
+    const prevEx = i > 0 ? currentQuestionDefs[i - 1].exoIndex : null;
+    const nextEx = i < currentQuestionDefs.length - 1 ? currentQuestionDefs[i + 1].exoIndex : null;
+    const sepStart = q.exoIndex !== prevEx ? " ex-sep-start" : "";
+    const sepEnd = q.exoIndex !== nextEx ? " ex-sep-end" : "";
+    const noteData = getNoteDisplayData(notesMap, q);
+    const styleAttr = noteData.style ? ` style="${noteData.style}"` : "";
+    return `<td class="matrix-note ${noteData.cssClass}${sepStart}${sepEnd}"${styleAttr} data-question-id="${q.id}" data-note-state="${noteData.state}">${noteData.text || "&nbsp;"}</td>`;
+  }).join("");
+
+  return `<tr>
+    <td class="matrix-name matrix-link-cell" data-student-id="${resultat.etudiant.id}">${resultat.etudiant.nom || ""}</td>
+    <td class="matrix-name matrix-link-cell" data-student-id="${resultat.etudiant.id}">${resultat.etudiant.prenom || ""}</td>
+    <td class="matrix-group">${resultat.groupe_nom || ""}</td>
+    ${detailCells}
+    <td class="matrix-metric">${Number(resultat.note_totale || 0).toFixed(2)}</td>
+    <td class="matrix-metric">${Number(resultat.bonus_abs || 0).toFixed(2)}</td>
+    <td class="matrix-metric">${Number(resultat.bonus_pct || 0).toFixed(2)}%</td>
+    <td class="matrix-metric">${Number(resultat.rehausse_groupe_pct || 0).toFixed(2)}%</td>
+    <td class="matrix-metric"><strong>${Number(resultat.note_sur_20 || 0).toFixed(2)}</strong></td>
+    <td class="matrix-metric">${resultat.classement_groupe == null ? "-" : resultat.classement_groupe}</td>
+  </tr>`;
+}
+
+function renderMatrix() {
+  const zone = detailZoneEl;
+  let rowsData = currentResultats.slice();
+
+  const grp = document.getElementById("filtre-groupe").value;
+  if (grp) rowsData = rowsData.filter(r => String(r.groupe_id || "") === grp);
+
+  rowsData.sort(compareRows);
+
+  if (!rowsData.length) {
+    zone.innerHTML = "<p style='color:#888'>Aucune donnée à afficher.</p>";
+    return;
+  }
+
+  const headExo = currentQuestionDefs.map((q, i) => {
+    const prevEx = i > 0 ? currentQuestionDefs[i - 1].exoIndex : null;
+    const nextEx = i < currentQuestionDefs.length - 1 ? currentQuestionDefs[i + 1].exoIndex : null;
+    const sepStart = q.exoIndex !== prevEx ? " ex-sep-start" : "";
+    const sepEnd = q.exoIndex !== nextEx ? " ex-sep-end" : "";
+    return `<th class="matrix-top sortable${sepStart}${sepEnd}" data-sort-key="q:${q.id}" title="${escapeAttr(`${q.exoTitre} - ${q.enonce}`)}">Ex${q.exoIndex}${sortIndicator(`q:${q.id}`)}</th>`;
+  }).join("");
+  const headQ = currentQuestionDefs.map((q, i) => {
+    const prevEx = i > 0 ? currentQuestionDefs[i - 1].exoIndex : null;
+    const nextEx = i < currentQuestionDefs.length - 1 ? currentQuestionDefs[i + 1].exoIndex : null;
+    const sepStart = q.exoIndex !== prevEx ? " ex-sep-start" : "";
+    const sepEnd = q.exoIndex !== nextEx ? " ex-sep-end" : "";
+    return `<th class="matrix-sub sortable${sepStart}${sepEnd}" data-sort-key="q:${q.id}" title="${escapeAttr(q.enonce)}">Q${q.qIndex}${sortIndicator(`q:${q.id}`)}</th>`;
+  }).join("");
+  const headBareme = currentQuestionDefs.map((q, i) => {
+    const prevEx = i > 0 ? currentQuestionDefs[i - 1].exoIndex : null;
+    const nextEx = i < currentQuestionDefs.length - 1 ? currentQuestionDefs[i + 1].exoIndex : null;
+    const sepStart = q.exoIndex !== prevEx ? " ex-sep-start" : "";
+    const sepEnd = q.exoIndex !== nextEx ? " ex-sep-end" : "";
+    return `<th class="matrix-sub${sepStart}${sepEnd}" title="${escapeAttr(q.enonce)}">${fmtNoteCell(q.poids)}</th>`;
+  }).join("");
+
+  const bodyRows = rowsData.map((row) => buildRowHtml(row)).join("");
+
+  zone.innerHTML = `
+    <div class="detail-notes-scroll">
+      <table class="detail-notes-table">
+        <thead>
+          <tr>
+            <th rowspan="3" class="matrix-sticky sortable" data-sort-key="nom">Nom${sortIndicator("nom")}</th>
+            <th rowspan="3" class="matrix-sticky sortable" data-sort-key="prenom">Prénom${sortIndicator("prenom")}</th>
+            <th rowspan="3" class="matrix-sticky sortable" data-sort-key="groupe">Groupe${sortIndicator("groupe")}</th>
+            ${headExo}
+            <th rowspan="3" class="sortable" data-sort-key="total">Total brut${sortIndicator("total")}</th>
+            <th rowspan="3" class="sortable" data-sort-key="bonus_abs">Bonus abs${sortIndicator("bonus_abs")}</th>
+            <th rowspan="3" class="sortable" data-sort-key="bonus_pct">Bonus %${sortIndicator("bonus_pct")}</th>
+            <th rowspan="3" class="sortable" data-sort-key="rehausse">Réhausse grp %${sortIndicator("rehausse")}</th>
+            <th rowspan="3" class="sortable" data-sort-key="note20">Note /20${sortIndicator("note20")}</th>
+            <th rowspan="3" class="sortable" data-sort-key="rang">Rang${sortIndicator("rang")}</th>
+          </tr>
+          <tr>${headQ}</tr>
+          <tr>${headBareme}</tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  `;
+
+  const surGlobal = rowsData.length ? Number(rowsData[0].poids_total || 0) : 0;
+  document.getElementById("detail-meta").textContent = `${rowsData.length} étudiant(s) affiché(s) · ${currentQuestionDefs.length} question(s) · Total sur ${surGlobal.toFixed(2)}`;
+}
+
+async function loadResultats() {
+  currentResultats = prepareResultats(await fetchResultats());
+  buildGroupFilter(currentResultats);
+  scheduleMatrixRender();
+}
+
+async function exportCsv() {
+  try {
+    const res = await fetch(`${API}/devoirs/${devoirId}/export-csv`);
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `resultats_${devoirId}.csv`;
+    const a = document.createElement("a");
+    const objectUrl = URL.createObjectURL(blob);
+    a.href = objectUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(objectUrl);
+  } catch (err) {
+    toast(`Erreur export CSV: ${err.message}`, 3200);
+  }
+}
+
+async function init() {
+  try {
+    const [_, resultats] = await Promise.all([
+      loadDevoir(),
+      fetchResultats(),
+    ]);
+    currentResultats = prepareResultats(resultats);
+    buildGroupFilter(currentResultats);
+    scheduleMatrixRender();
+  } catch (err) {
+    document.getElementById("detail-zone").innerHTML = `<p style="color:#b42318">${err.message}</p>`;
+  }
+}
+
+detailZoneEl.addEventListener("click", (event) => {
+  const sortable = event.target.closest("th.sortable[data-sort-key]");
+  if (sortable && detailZoneEl.contains(sortable)) {
+    const key = sortable.getAttribute("data-sort-key");
+    if (key) toggleSort(key);
+    return;
+  }
+
+  const clickableNameCell = event.target.closest("td.matrix-name.matrix-link-cell[data-student-id]");
+  if (clickableNameCell && detailZoneEl.contains(clickableNameCell)) {
+    const studentId = clickableNameCell.getAttribute("data-student-id");
+    const groupId = document.getElementById("filtre-groupe").value;
+    const href = buildCorrectionUrl(studentId, null, groupId);
+    if (href) window.location.href = href;
+    return;
+  }
+});
+
+detailZoneEl.addEventListener("mouseover", (event) => {
+  const noteCell = event.target.closest("td.matrix-note[data-question-id][data-note-state]");
+  if (!noteCell || !detailZoneEl.contains(noteCell) || noteCell.title) return;
+  const questionId = Number(noteCell.getAttribute("data-question-id"));
+  const state = noteCell.getAttribute("data-note-state");
+  const meta = questionMetaById.get(questionId);
+  if (!meta) return;
+
+  let suffix = "";
+  if (state === "empty") suffix = " : pas encore corrigée";
+  else if (state === "unanswered") suffix = " : non répondue";
+
+  noteCell.title = `${meta.exoTitre} - ${meta.enonce}${suffix}`;
+});
+
+document.getElementById("refresh-btn").addEventListener("click", loadResultats);
+document.getElementById("filtre-groupe").addEventListener("change", renderMatrix);
+document.getElementById("csv-btn").addEventListener("click", exportCsv);
+
+init();
+</script>
+</body>
+</html>

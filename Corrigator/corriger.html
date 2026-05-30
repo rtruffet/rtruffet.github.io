@@ -26,10 +26,13 @@
     <button class="nav-toggle" id="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
   </div>
   <div class="nav-collapse" id="nav-collapse">
-    <a href="index.html">Devoirs</a>
+    <a href="index.html">Accueil</a>
+    <a href="devoirs.html">Devoirs</a>
     <a href="etudiants.html">Étudiants</a>
+    <a href="suivi-resultats.html">Suivi</a>
     <a href="aide.html">Aide</a>
-    <a id="btn-retour-gestion" href="#" class="btn btn-neutral btn-sm">← Retour</a>
+    <a id="btn-retour-gestion" href="#" class="btn btn-neutral btn-sm">← Retour gestion</a>
+    <a id="btn-retour-detail" href="#" class="btn btn-neutral btn-sm" style="display:none">← Retour détail</a>
     <div class="nav-correction-actions">
       <button id="rapid-mode-btn" class="btn btn-neutral btn-sm" onclick="toggleRapidMode()">Ultra-rapide: OFF</button>
       <button id="shortcuts-toggle-btn" class="btn btn-neutral btn-sm" onclick="toggleShortcutsPanel()">Raccourcis</button>
@@ -160,8 +163,11 @@
 const API    = "http://localhost:8000";
 const params = new URLSearchParams(location.search);
 const devoirId = params.get("devoir");
+const questionParam = parseInt(params.get("question"), 10);
+const sourceParam = params.get("source");
+const detailGroupParam = params.get("groupe");
 
-if (!devoirId) location.href = "index.html";
+if (!devoirId) location.href = "devoirs.html";
 
 /* ── État global ─────────────────────────────────────────────────────────── */
 let etudiants   = [];  // liste complète des étudiants
@@ -176,6 +182,7 @@ let rapidMode = false;
 let autoFocusEnabled = true;
 let recapTabMode = "eleve";
 let recapRenderToken = 0;
+let requestedQuestionId = Number.isNaN(questionParam) ? null : questionParam;
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 function toast(msg) {
@@ -398,7 +405,7 @@ async function loadGroupesFilter() {
 
   const sel = document.getElementById("filtre-groupe");
   while (sel.options.length > 1) sel.remove(1);
-  for (const g of devoirGroupes) sel.appendChild(new Option(g.nom, g.id));
+  for (const g of devoirGroupes) sel.appendChild(new Option(g.label || g.nom, g.id));
 
   // S'il n'y a qu'un groupe affecté, on le sélectionne automatiquement
   if (devoirGroupes.length === 1) {
@@ -472,12 +479,19 @@ async function init() {
 
   // Chargement du devoir (structure)
   const resD = await fetch(`${API}/devoirs/${devoirId}`);
-  if (!resD.ok) { location.href = "index.html"; return; }
+  if (!resD.ok) { location.href = "devoirs.html"; return; }
   const devoir = await resD.json();
 
   document.getElementById("devoir-label").textContent = devoir.titre;
   document.title = `Correction – ${devoir.titre}`;
   document.getElementById("btn-retour-gestion").href = `devoir.html?id=${devoirId}`;
+  if (sourceParam === "detail") {
+    const detailUrl = new URL(`detail-notes.html?id=${devoirId}`, window.location.href);
+    if (detailGroupParam) detailUrl.searchParams.set("groupe", detailGroupParam);
+    const backBtn = document.getElementById("btn-retour-detail");
+    backBtn.href = detailUrl.pathname + detailUrl.search;
+    backBtn.style.display = "inline-flex";
+  }
 
   // Aplatissement des questions dans l'ordre exercice > question
   questions = [];
@@ -527,6 +541,7 @@ async function loadEtudiant(focusNotes = true) {
   // Mise à jour de l'URL sans rechargement
   const url = new URL(location.href);
   url.searchParams.set("etudiant", etudiant.id);
+  if (requestedQuestionId != null) url.searchParams.set("question", requestedQuestionId);
   history.replaceState(null, "", url.toString());
 
   // Chargement des notes existantes
@@ -542,6 +557,10 @@ async function loadEtudiant(focusNotes = true) {
   }
 
   questionIdx = 0;
+  if (requestedQuestionId != null) {
+    const requestedIdx = questions.findIndex(q => q.id === requestedQuestionId);
+    if (requestedIdx >= 0) questionIdx = requestedIdx;
+  }
   renderQuestion();
   renderRecap();
   if (focusNotes) focusCurrentNoteButton();
@@ -568,6 +587,15 @@ function renderQuestion() {
   document.getElementById("question-enonce").textContent = q.enonce;
   document.getElementById("question-poids").textContent  = `${q.poids} point${q.poids > 1 ? "s" : ""}`;
   document.getElementById("question-select").value = String(questionIdx);
+  const url = new URL(location.href);
+  if (q && q.id != null) {
+    requestedQuestionId = q.id;
+    url.searchParams.set("question", q.id);
+  } else {
+    requestedQuestionId = null;
+    url.searchParams.delete("question");
+  }
+  history.replaceState(null, "", url.toString());
 
   finMsg.style.display = "none";
   qZone.style.display  = "";

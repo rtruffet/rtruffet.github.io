@@ -229,6 +229,10 @@
           meta = normalizeMeta(getLegacyMeta());
           cloudSnapshot = normalizeCloudSnapshot(getLegacyCloudSnapshot());
         }
+
+        if (migrateEtudiantsGroupShape() || migrateGroupesSchoolYearShape()) {
+          await saveDb();
+        }
       })();
     }
 
@@ -397,8 +401,116 @@
     return g ? g.nom : null;
   }
 
+  function groupById(groupeId) {
+    return db.groupes.find((x) => x.id === groupeId) || null;
+  }
+
+  function normalizeSchoolYear(value) {
+    const out = String(value == null ? "" : value).trim();
+    return out || null;
+  }
+
+  function groupLabel(group) {
+    if (!group) return "";
+    const nom = String(group.nom || "").trim();
+    const annee = normalizeSchoolYear(group.annee_scolaire);
+    return annee ? `${nom} (${annee})` : nom;
+  }
+
+  function groupLabelById(groupeId) {
+    return groupLabel(groupById(groupeId));
+  }
+
+  function sanitizeGroupIds(raw) {
+    const out = [];
+    const seen = new Set();
+    const list = Array.isArray(raw) ? raw : [];
+    for (const value of list) {
+      const gid = toInt(value, null);
+      if (gid == null || gid <= 0 || seen.has(gid)) continue;
+      seen.add(gid);
+      out.push(gid);
+    }
+    return out;
+  }
+
+  function getEtudiantGroupIds(etudiant) {
+    if (!etudiant || typeof etudiant !== "object") return [];
+    if (Array.isArray(etudiant.groupe_ids)) {
+      return sanitizeGroupIds(etudiant.groupe_ids);
+    }
+    if (etudiant.groupe_id == null) return [];
+    return sanitizeGroupIds([etudiant.groupe_id]);
+  }
+
+  function setEtudiantGroupIds(etudiant, groupIds) {
+    const ids = sanitizeGroupIds(groupIds);
+    etudiant.groupe_ids = ids;
+    etudiant.groupe_id = ids.length ? ids[0] : null;
+    return ids;
+  }
+
+  function etudiantHasGroup(etudiant, groupeId) {
+    if (groupeId == null) return true;
+    return getEtudiantGroupIds(etudiant).includes(groupeId);
+  }
+
+  function etudiantGroupNames(etudiant) {
+    return getEtudiantGroupIds(etudiant)
+      .map((gid) => groupLabelById(gid))
+      .filter((name) => Boolean(name));
+  }
+
+  function migrateGroupesSchoolYearShape() {
+    let changed = false;
+    for (const g of db.groupes) {
+      const normalized = normalizeSchoolYear(g.annee_scolaire);
+      if ((g.annee_scolaire || null) !== normalized) {
+        g.annee_scolaire = normalized;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function migrateEtudiantsGroupShape() {
+    let changed = false;
+    for (const e of db.etudiants) {
+      const beforeIds = Array.isArray(e.groupe_ids) ? JSON.stringify(e.groupe_ids) : null;
+      const beforeSingle = e.groupe_id == null ? null : Number(e.groupe_id);
+      const ids = getEtudiantGroupIds(e);
+      setEtudiantGroupIds(e, ids);
+      if ((Array.isArray(e.groupe_ids) ? JSON.stringify(e.groupe_ids) : null) !== beforeIds) changed = true;
+      if ((e.groupe_id == null ? null : Number(e.groupe_id)) !== beforeSingle) changed = true;
+    }
+    return changed;
+  }
+
   function clampNote20(value) {
     return Math.max(0, Math.min(20, value));
+  }
+
+  function getDevoirSortStamp(devoir) {
+    return Number(devoir && devoir.updated_at_ms) || 0;
+  }
+
+  function touchDevoir(devoirId) {
+    const devoir = db.devoirs.find((d) => d.id === devoirId);
+    if (!devoir) return;
+    const stamp = nowMs();
+    if (!devoir.created_at_ms) devoir.created_at_ms = stamp;
+    devoir.updated_at_ms = stamp;
+  }
+
+  function getDevoirIdForExercice(exerciceId) {
+    const ex = db.exercices.find((e) => e.id === exerciceId);
+    return ex ? ex.devoir_id : null;
+  }
+
+  function getDevoirIdForQuestion(questionId) {
+    const q = db.questions.find((x) => x.id === questionId);
+    if (!q) return null;
+    return getDevoirIdForExercice(q.exercice_id);
   }
 
   function buildDevoirById(devoirId) {
@@ -430,17 +542,24 @@
 
     const groupes = db.devoir_groupes
       .filter((dg) => dg.devoir_id === devoirId)
-      .map((dg) => ({
-        id: dg.groupe_id,
-        nom: groupNameById(dg.groupe_id) || "",
-        rehausse_pct: Number(dg.rehausse_pct || 0),
-      }))
-      .sort((a, b) => a.nom.localeCompare(b.nom, "fr", { sensitivity: "base" }));
+      .map((dg) => {
+        const grp = groupById(dg.groupe_id);
+        return {
+          id: dg.groupe_id,
+          nom: grp ? grp.nom : "",
+          annee_scolaire: grp ? normalizeSchoolYear(grp.annee_scolaire) : null,
+          label: groupLabel(grp),
+          rehausse_pct: Number(dg.rehausse_pct || 0),
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, "fr", { sensitivity: "base" }));
 
     return {
       id: devoir.id,
       titre: devoir.titre,
       description: devoir.description,
+      created_at_ms: Number(devoir.created_at_ms || 0) || null,
+      updated_at_ms: Number(devoir.updated_at_ms || 0) || null,
       exercices: exos,
       groupes,
     };
@@ -456,8 +575,11 @@
     const txt = recherche ? String(recherche).toLowerCase() : null;
 
     return db.etudiants
-      .filter((e) => groupSet.has(e.groupe_id))
-      .filter((e) => (groupeId == null ? true : e.groupe_id === groupeId))
+      .filter((e) => {
+        const ids = getEtudiantGroupIds(e);
+        return ids.some((gid) => groupSet.has(gid));
+      })
+      .filter((e) => (groupeId == null ? true : etudiantHasGroup(e, groupeId)))
       .filter((e) => {
         if (!txt) return true;
         return String(e.nom).toLowerCase().includes(txt) || String(e.prenom).toLowerCase().includes(txt);
@@ -467,14 +589,26 @@
         if (c !== 0) return c;
         return a.prenom.localeCompare(b.prenom, "fr", { sensitivity: "base" });
       })
-      .map((e) => ({
-        id: e.id,
-        nom: e.nom,
-        prenom: e.prenom,
-        email: e.email,
-        groupe_id: e.groupe_id,
-        groupe_nom: groupNameById(e.groupe_id),
-      }));
+      .map((e) => {
+        const allGroups = getEtudiantGroupIds(e).filter((gid) => groupSet.has(gid));
+        const displayGroupId = groupeId != null && allGroups.includes(groupeId)
+          ? groupeId
+          : (allGroups[0] || null);
+        const groupNames = allGroups
+          .map((gid) => groupLabelById(gid))
+          .filter((name) => Boolean(name));
+
+        return {
+          id: e.id,
+          nom: e.nom,
+          prenom: e.prenom,
+          email: e.email,
+          groupe_id: displayGroupId,
+          groupe_nom: groupLabelById(displayGroupId),
+          groupe_ids: allGroups,
+          groupe_noms: groupNames,
+        };
+      });
   }
 
   function getQuestionIdsForDevoir(devoirId) {
@@ -544,6 +678,7 @@
         rehausse_groupe_pct: Number(rehausseGroupePct.toFixed(3)),
         classement_groupe: null,
         nb_corrigees_groupe: 0,
+        groupe_id: e.groupe_id,
         groupe_nom: e.groupe_nom,
         copie_corrigee: notes.length > 0,
         notes,
@@ -881,22 +1016,35 @@
         .map((g) => ({
           id: g.id,
           nom: g.nom,
-          nb_etudiants: db.etudiants.filter((e) => e.groupe_id === g.id).length,
+          annee_scolaire: normalizeSchoolYear(g.annee_scolaire),
+          label: groupLabel(g),
+          nb_etudiants: db.etudiants.filter((e) => etudiantHasGroup(e, g.id)).length,
         }))
-        .sort((a, b) => a.nom.localeCompare(b.nom, "fr", { sensitivity: "base" }));
+        .sort((a, b) => a.label.localeCompare(b.label, "fr", { sensitivity: "base" }));
       return jsonResponse(200, rows);
     }
 
     if (method === "POST" && path === "/groupes") {
       const body = await requestJson(req);
       const nom = String(body.nom || "").trim();
+      const anneeScolaire = normalizeSchoolYear(body.annee_scolaire);
       if (!nom) return jsonResponse(422, { detail: "Nom requis" });
-      const exists = db.groupes.some((g) => g.nom.toLowerCase() === nom.toLowerCase());
-      if (exists) return jsonResponse(400, { detail: "Nom de groupe deja utilise" });
-      const created = { id: nextId("groupes"), nom };
+      const exists = db.groupes.some((g) => {
+        const sameName = String(g.nom || "").toLowerCase() === nom.toLowerCase();
+        const sameYear = normalizeSchoolYear(g.annee_scolaire) === anneeScolaire;
+        return sameName && sameYear;
+      });
+      if (exists) return jsonResponse(400, { detail: "Ce groupe existe deja pour cette annee scolaire" });
+      const created = { id: nextId("groupes"), nom, annee_scolaire: anneeScolaire };
       db.groupes.push(created);
       await saveDb();
-      return jsonResponse(201, { id: created.id, nom: created.nom, nb_etudiants: 0 });
+      return jsonResponse(201, {
+        id: created.id,
+        nom: created.nom,
+        annee_scolaire: created.annee_scolaire,
+        label: groupLabel(created),
+        nb_etudiants: 0,
+      });
     }
 
     {
@@ -907,7 +1055,10 @@
         if (idx < 0) return jsonResponse(404, { detail: "Groupe introuvable" });
         db.groupes.splice(idx, 1);
         db.devoir_groupes = db.devoir_groupes.filter((dg) => dg.groupe_id !== groupeId);
-        db.etudiants = db.etudiants.map((e) => (e.groupe_id === groupeId ? Object.assign({}, e, { groupe_id: null }) : e));
+        db.etudiants.forEach((e) => {
+          const ids = getEtudiantGroupIds(e).filter((gid) => gid !== groupeId);
+          setEtudiantGroupIds(e, ids);
+        });
         await saveDb();
         return emptyResponse(204);
       }
@@ -951,6 +1102,7 @@
             prenom,
             email,
             groupe_id: groupeId,
+            groupe_ids: [groupeId],
           });
           crees += 1;
         });
@@ -963,20 +1115,26 @@
       const groupeId = url.searchParams.get("groupe_id");
       const gid = groupeId != null && groupeId !== "" ? toInt(groupeId, null) : null;
       const rows = db.etudiants
-        .filter((e) => (gid == null ? true : e.groupe_id === gid))
+        .filter((e) => (gid == null ? true : etudiantHasGroup(e, gid)))
         .sort((a, b) => {
           const c = a.nom.localeCompare(b.nom, "fr", { sensitivity: "base" });
           if (c !== 0) return c;
           return a.prenom.localeCompare(b.prenom, "fr", { sensitivity: "base" });
         })
-        .map((e) => ({
-          id: e.id,
-          nom: e.nom,
-          prenom: e.prenom,
-          email: e.email,
-          groupe_id: e.groupe_id,
-          groupe_nom: groupNameById(e.groupe_id),
-        }));
+        .map((e) => {
+          const gids = getEtudiantGroupIds(e);
+          const gnom = etudiantGroupNames(e);
+          return {
+            id: e.id,
+            nom: e.nom,
+            prenom: e.prenom,
+            email: e.email,
+            groupe_id: gids[0] || null,
+            groupe_nom: gnom[0] || null,
+            groupe_ids: gids,
+            groupe_noms: gnom,
+          };
+        });
       return jsonResponse(200, rows);
     }
 
@@ -986,29 +1144,119 @@
       const prenom = String(body.prenom || "").trim();
       const email = body.email == null ? null : String(body.email).trim() || null;
       const groupeId = body.groupe_id == null ? null : toInt(body.groupe_id, null);
+      const groupeIdsPayload = Array.isArray(body.groupe_ids) ? body.groupe_ids : null;
       if (!nom || !prenom) return jsonResponse(422, { detail: "Nom et prenom requis" });
+
+      const groupeIds = sanitizeGroupIds(groupeIdsPayload != null ? groupeIdsPayload : (groupeId == null ? [] : [groupeId]));
 
       const created = {
         id: nextId("etudiants"),
         nom,
         prenom,
         email,
-        groupe_id: groupeId,
+        groupe_id: groupeIds[0] || null,
+        groupe_ids: groupeIds,
       };
       db.etudiants.push(created);
       await saveDb();
+      const groupeNoms = etudiantGroupNames(created);
       return jsonResponse(201, {
         id: created.id,
         nom: created.nom,
         prenom: created.prenom,
         email: created.email,
         groupe_id: created.groupe_id,
-        groupe_nom: groupNameById(created.groupe_id),
+        groupe_nom: groupeNoms[0] || null,
+        groupe_ids: getEtudiantGroupIds(created),
+        groupe_noms: groupeNoms,
       });
+    }
+
+    if (method === "DELETE" && path === "/etudiants/batch") {
+      const body = await requestJson(req);
+      const ids = sanitizeGroupIds(body.ids || []);
+      if (!ids.length) return jsonResponse(422, { detail: "Liste d'etudiants vide" });
+
+      const idSet = new Set(ids);
+      db.etudiants = db.etudiants.filter((e) => !idSet.has(e.id));
+      db.notes = db.notes.filter((n) => !idSet.has(n.etudiant_id));
+      db.ajustements_notes = db.ajustements_notes.filter((a) => !idSet.has(a.etudiant_id));
+      await saveDb();
+      return jsonResponse(200, { deleted: ids.length });
+    }
+
+    if (method === "POST" && path === "/etudiants/batch/assign-groupe") {
+      const body = await requestJson(req);
+      const ids = sanitizeGroupIds(body.ids || []);
+      const groupeId = toInt(body.groupe_id, null);
+      if (!ids.length) return jsonResponse(422, { detail: "Liste d'etudiants vide" });
+      if (groupeId == null) return jsonResponse(422, { detail: "groupe_id requis" });
+      if (!db.groupes.some((g) => g.id === groupeId)) return jsonResponse(404, { detail: "Groupe introuvable" });
+
+      const idSet = new Set(ids);
+      db.etudiants.forEach((e) => {
+        if (!idSet.has(e.id)) return;
+        const next = getEtudiantGroupIds(e);
+        if (!next.includes(groupeId)) next.push(groupeId);
+        setEtudiantGroupIds(e, next);
+      });
+      await saveDb();
+      return jsonResponse(200, { updated: ids.length, groupe_id: groupeId });
+    }
+
+    if (method === "POST" && path === "/etudiants/batch/remove-groupe") {
+      const body = await requestJson(req);
+      const ids = sanitizeGroupIds(body.ids || []);
+      const groupeId = toInt(body.groupe_id, null);
+      if (!ids.length) return jsonResponse(422, { detail: "Liste d'etudiants vide" });
+      if (groupeId == null) return jsonResponse(422, { detail: "groupe_id requis" });
+
+      const idSet = new Set(ids);
+      db.etudiants.forEach((e) => {
+        if (!idSet.has(e.id)) return;
+        const next = getEtudiantGroupIds(e).filter((gid) => gid !== groupeId);
+        setEtudiantGroupIds(e, next);
+      });
+      await saveDb();
+      return jsonResponse(200, { updated: ids.length, groupe_id: groupeId });
     }
 
     {
       const m = path.match(/^\/etudiants\/(\d+)$/);
+      if (m && method === "PATCH") {
+        const etudiantId = toInt(m[1], 0);
+        const etu = db.etudiants.find((e) => e.id === etudiantId);
+        if (!etu) return jsonResponse(404, { detail: "Etudiant introuvable" });
+
+        const body = await requestJson(req);
+        if (Object.prototype.hasOwnProperty.call(body, "nom")) {
+          etu.nom = String(body.nom || "").trim();
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "prenom")) {
+          etu.prenom = String(body.prenom || "").trim();
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "email")) {
+          etu.email = body.email == null ? null : (String(body.email).trim() || null);
+        }
+
+        if (!String(etu.nom || "").trim() || !String(etu.prenom || "").trim()) {
+          return jsonResponse(422, { detail: "Nom et prenom requis" });
+        }
+
+        const groupeNoms = etudiantGroupNames(etu);
+        await saveDb();
+        return jsonResponse(200, {
+          id: etu.id,
+          nom: etu.nom,
+          prenom: etu.prenom,
+          email: etu.email,
+          groupe_id: etu.groupe_id,
+          groupe_nom: groupeNoms[0] || null,
+          groupe_ids: getEtudiantGroupIds(etu),
+          groupe_noms: groupeNoms,
+        });
+      }
+
       if (m && method === "DELETE") {
         const etudiantId = toInt(m[1], 0);
         const idx = db.etudiants.findIndex((e) => e.id === etudiantId);
@@ -1022,7 +1270,11 @@
     }
 
     if (method === "GET" && path === "/devoirs") {
-      const rows = deepClone(db.devoirs).sort((a, b) => a.id - b.id);
+      const rows = deepClone(db.devoirs).sort((a, b) => {
+        const diff = getDevoirSortStamp(b) - getDevoirSortStamp(a);
+        if (diff !== 0) return diff;
+        return Number(b.id) - Number(a.id);
+      });
       return jsonResponse(200, rows);
     }
 
@@ -1031,7 +1283,8 @@
       const titre = String(body.titre || "").trim();
       const description = body.description == null ? null : String(body.description);
       if (!titre) return jsonResponse(422, { detail: "Titre requis" });
-      const created = { id: nextId("devoirs"), titre, description };
+      const stamp = nowMs();
+      const created = { id: nextId("devoirs"), titre, description, created_at_ms: stamp, updated_at_ms: stamp };
       db.devoirs.push(created);
       await saveDb();
       return jsonResponse(201, buildDevoirById(created.id));
@@ -1063,12 +1316,17 @@
         if (!devoir) return jsonResponse(404, { detail: "Devoir introuvable" });
         const rows = db.devoir_groupes
           .filter((dg) => dg.devoir_id === devoirId)
-          .map((dg) => ({
-            id: dg.groupe_id,
-            nom: groupNameById(dg.groupe_id) || "",
-            rehausse_pct: Number(dg.rehausse_pct || 0),
-          }))
-          .sort((a, b) => a.nom.localeCompare(b.nom, "fr", { sensitivity: "base" }));
+          .map((dg) => {
+            const grp = groupById(dg.groupe_id);
+            return {
+              id: dg.groupe_id,
+              nom: grp ? grp.nom : "",
+              annee_scolaire: grp ? normalizeSchoolYear(grp.annee_scolaire) : null,
+              label: groupLabel(grp),
+              rehausse_pct: Number(dg.rehausse_pct || 0),
+            };
+          })
+          .sort((a, b) => a.label.localeCompare(b.label, "fr", { sensitivity: "base" }));
         return jsonResponse(200, rows);
       }
     }
@@ -1089,6 +1347,7 @@
             groupe_id: groupeId,
             rehausse_pct: 0,
           });
+          touchDevoir(devoirId);
           await saveDb();
         }
         return emptyResponse(204);
@@ -1099,6 +1358,7 @@
         const devoir = db.devoirs.find((d) => d.id === devoirId);
         if (!devoir) return jsonResponse(404, { detail: "Devoir introuvable" });
         db.devoir_groupes = db.devoir_groupes.filter((dg) => !(dg.devoir_id === devoirId && dg.groupe_id === groupeId));
+        touchDevoir(devoirId);
         await saveDb();
         return emptyResponse(204);
       }
@@ -1114,6 +1374,7 @@
         const row = db.devoir_groupes.find((dg) => dg.devoir_id === devoirId && dg.groupe_id === groupeId);
         if (!row) return jsonResponse(404, { detail: "Association devoir/groupe introuvable" });
         row.rehausse_pct = bonusPct;
+        touchDevoir(devoirId);
         await saveDb();
         return jsonResponse(200, { groupe_id: groupeId, rehausse_pct: bonusPct });
       }
@@ -1147,6 +1408,7 @@
           row.bonus_abs = bonusAbs;
           row.bonus_pct = bonusPct;
         }
+        touchDevoir(devoirId);
         await saveDb();
         return emptyResponse(204);
       }
@@ -1182,6 +1444,7 @@
           ordre,
         };
         db.exercices.push(created);
+        touchDevoir(devoirId);
         await saveDb();
         return jsonResponse(201, Object.assign({}, created, { questions: [] }));
       }
@@ -1193,7 +1456,9 @@
         const exerciceId = toInt(m[1], 0);
         const ex = db.exercices.find((e) => e.id === exerciceId);
         if (!ex) return jsonResponse(404, { detail: "Exercice introuvable" });
+        const devoirId = ex.devoir_id;
         deleteExerciceCascade(exerciceId);
+        touchDevoir(devoirId);
         await saveDb();
         return emptyResponse(204);
       }
@@ -1217,6 +1482,7 @@
         const old = ex.ordre;
         ex.ordre = voisin.ordre;
         voisin.ordre = old;
+        touchDevoir(ex.devoir_id);
         await saveDb();
         return jsonResponse(200, { success: true });
       }
@@ -1242,6 +1508,7 @@
           ordre,
         };
         db.questions.push(created);
+        touchDevoir(ex.devoir_id);
         await saveDb();
         return jsonResponse(201, created);
       }
@@ -1253,17 +1520,20 @@
         const questionId = toInt(m[1], 0);
         const q = db.questions.find((x) => x.id === questionId);
         if (!q) return jsonResponse(404, { detail: "Question introuvable" });
+        const devoirId = getDevoirIdForExercice(q.exercice_id);
         const body = await requestJson(req);
         if (Object.prototype.hasOwnProperty.call(body, "enonce")) q.enonce = String(body.enonce);
         if (Object.prototype.hasOwnProperty.call(body, "poids")) q.poids = toNum(body.poids, q.poids);
+        touchDevoir(devoirId);
         await saveDb();
         return jsonResponse(200, deepClone(q));
       }
       if (m && method === "DELETE") {
         const questionId = toInt(m[1], 0);
-        const exists = db.questions.some((q) => q.id === questionId);
-        if (!exists) return jsonResponse(404, { detail: "Question introuvable" });
+        const devoirId = getDevoirIdForQuestion(questionId);
+        if (!devoirId) return jsonResponse(404, { detail: "Question introuvable" });
         deleteQuestionCascade(questionId);
+        touchDevoir(devoirId);
         await saveDb();
         return emptyResponse(204);
       }
@@ -1287,6 +1557,7 @@
         const old = q.ordre;
         q.ordre = voisin.ordre;
         voisin.ordre = old;
+        touchDevoir(getDevoirIdForExercice(q.exercice_id));
         await saveDb();
         return jsonResponse(200, { success: true });
       }
@@ -1308,6 +1579,7 @@
         const etu = db.etudiants.find((e) => e.id === etudiantId);
         const q = db.questions.find((x) => x.id === questionId);
         if (!etu || !q) return jsonResponse(404, { detail: "Etudiant ou question introuvable" });
+        const devoirId = getDevoirIdForExercice(q.exercice_id);
 
         let row = db.notes.find((n) => n.etudiant_id === etudiantId && n.question_id === questionId);
         if (!row) {
@@ -1323,6 +1595,7 @@
           row.valeur = valeur;
           row.commentaire = commentaire;
         }
+        touchDevoir(devoirId);
         await saveDb();
         return jsonResponse(200, { question_id: questionId, valeur, commentaire });
       }
@@ -1330,9 +1603,11 @@
       if (m && method === "DELETE") {
         const etudiantId = toInt(m[1], 0);
         const questionId = toInt(m[2], 0);
+        const devoirId = getDevoirIdForQuestion(questionId);
         const before = db.notes.length;
         db.notes = db.notes.filter((n) => !(n.etudiant_id === etudiantId && n.question_id === questionId));
         if (db.notes.length === before) return jsonResponse(404, { detail: "Note introuvable" });
+        touchDevoir(devoirId);
         await saveDb();
         return emptyResponse(204);
       }

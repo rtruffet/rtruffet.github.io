@@ -21,8 +21,10 @@
     <button class="nav-toggle" id="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
   </div>
   <div class="nav-collapse" id="nav-collapse">
-    <a href="index.html">Devoirs</a>
+    <a href="index.html">Accueil</a>
+    <a href="devoirs.html">Devoirs</a>
     <a href="etudiants.html">Étudiants</a>
+    <a href="suivi-resultats.html">Suivi</a>
     <a href="aide.html">Aide</a>
     <div class="nav-devoir-title" id="devoir-titre">Chargement…</div>
     <div class="nav-sync-actions">
@@ -118,6 +120,8 @@
     <h2>Résultats</h2>
     <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
       <button class="btn btn-neutral btn-sm" onclick="loadResultats()">Actualiser</button>
+      <a class="btn btn-primary btn-sm" id="detail-notes-link" href="#">Vue détaillée</a>
+      <button class="btn btn-success btn-sm" onclick="exportCsv()">Exporter CSV (toutes notes)</button>
       <button class="btn btn-sm btn-ghost-danger" onclick="resetAllAjustements()">Réinitialiser tous les bonus</button>
       <label for="result-sort" style="font-size:.85rem;color:#555">Tri</label>
       <select id="result-sort" onchange="renderResultatsTable()"
@@ -185,7 +189,12 @@ let currentResultats = [];
 let devoirGroupes = [];
 const rehausseSaveTimers = {};
 
-if (!devoirId) location.href = "index.html";
+if (!devoirId) location.href = "devoirs.html";
+
+const detailNotesLink = document.getElementById("detail-notes-link");
+if (detailNotesLink) {
+  detailNotesLink.href = `detail-notes.html?id=${encodeURIComponent(devoirId)}`;
+}
 
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -212,7 +221,7 @@ function switchTab(tabName) {
 
 async function loadDevoir() {
   const res = await fetch(`${API}/devoirs/${devoirId}`);
-  if (!res.ok) { location.href = "index.html"; return; }
+  if (!res.ok) { location.href = "devoirs.html"; return; }
   const devoir = await res.json();
 
   document.title = `Corrigator – ${devoir.titre}`;
@@ -230,10 +239,11 @@ function renderGroupesDevoir(groupes) {
     return;
   }
   for (const g of groupes) {
+    const label = g.label || (g.annee_scolaire ? `${g.nom} (${g.annee_scolaire})` : g.nom);
     const li = document.createElement("li");
     li.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:.35rem">
-        <strong>${g.nom}</strong>
+        <strong>${label}</strong>
         <label style="display:flex;align-items:center;gap:.45rem;color:#555;font-size:.85rem">
           Réhaussement groupe (%)
           <input type="number" step="0.5" value="${Number(g.rehausse_pct || 0).toFixed(2)}"
@@ -293,7 +303,7 @@ async function loadGroupesPourDevoir() {
   while (sel.options.length > 1) sel.remove(1);
   for (const g of all) {
     if (assignedIds.has(g.id)) continue;
-    sel.appendChild(new Option(g.nom, g.id));
+    sel.appendChild(new Option(g.label || g.nom, g.id));
   }
   if (current) sel.value = current;
 
@@ -301,7 +311,7 @@ async function loadGroupesPourDevoir() {
   const prevRes = filtreRes.value;
   while (filtreRes.options.length > 1) filtreRes.remove(1);
   for (const g of assigned) {
-    filtreRes.appendChild(new Option(g.nom, g.id));
+    filtreRes.appendChild(new Option(g.label || g.nom, g.id));
   }
   if (prevRes) filtreRes.value = prevRes;
   renderGroupesDevoir(assigned);
@@ -601,6 +611,25 @@ async function moveQuestion(questionId, direction, triggerBtn) {
 }
 
 /* ── Résultats ───────────────────────────────────────────────────────────── */
+
+async function exportCsv() {
+  const url = `${API}/devoirs/${devoirId}/export-csv`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `resultats_${devoirId}.csv`;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    toast(`Erreur export CSV : ${err.message}`, 3000);
+  }
+}
 
 async function loadResultats() {
   const groupeId = document.getElementById("filtre-groupe-res").value;

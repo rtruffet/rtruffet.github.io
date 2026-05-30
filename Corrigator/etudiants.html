@@ -21,8 +21,10 @@
     <button class="nav-toggle" id="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
   </div>
   <div class="nav-collapse" id="nav-collapse">
-    <a href="index.html">Devoirs</a>
+    <a href="index.html">Accueil</a>
+    <a href="devoirs.html">Devoirs</a>
     <a href="etudiants.html">Étudiants</a>
+    <a href="suivi-resultats.html">Suivi</a>
     <a href="aide.html">Aide</a>
     <div class="nav-sync-actions">
       <button id="sync-pull-btn" class="btn btn-neutral btn-sm" onclick="syncPull()" style="display:none">Pull</button>
@@ -58,6 +60,7 @@
     <h2>Groupes (classes)</h2>
     <div class="form-row">
       <input type="text" id="g-nom" placeholder="Nom du groupe (ex : MP2I-A)">
+      <input type="text" id="g-annee" placeholder="Année scolaire (ex : 2025-2026)">
       <button class="btn btn-primary" onclick="createGroupe()">Créer</button>
     </div>
     <ul class="etudiant-list" id="groupe-list" style="margin-top:.75rem">
@@ -99,10 +102,29 @@
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem">
       <h2 style="margin:0">Liste des étudiants</h2>
-      <select id="filtre-groupe" onchange="loadEtudiants()"
-              style="padding:.4rem .75rem;border:1px solid #ccc;border-radius:6px">
-        <option value="">Tous les groupes</option>
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <select id="filtre-groupe" onchange="loadEtudiants()"
+                style="padding:.4rem .75rem;border:1px solid #ccc;border-radius:6px">
+          <option value="">Tous les groupes</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:.75rem">
+      <select id="batch-groupe" style="flex:1;min-width:220px;padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px">
+        <option value="">-- Groupe cible --</option>
       </select>
+      <button class="btn btn-success" onclick="assignSelectedToGroup()">Affecter les cochés</button>
+      <button class="btn btn-neutral" onclick="removeSelectedFromGroup()">Retirer du groupe</button>
+      <button class="btn btn-danger" onclick="deleteSelectedEtudiants()">Supprimer les cochés</button>
+    </div>
+    <div style="margin-bottom:.5rem;color:#555;font-size:.9rem">
+      Sélection : <strong id="selected-count">0</strong>
+    </div>
+    <div style="margin-bottom:.45rem;color:#555;font-size:.9rem">
+      <label style="display:inline-flex;align-items:center;gap:.35rem">
+        <input type="checkbox" id="select-all-filtre" onchange="toggleSelectAllFiltered(this.checked)">
+        Cocher tout (filtre)
+      </label>
     </div>
     <ul class="etudiant-list" id="etudiant-list">
       <li style="color:#888">Chargement…</li>
@@ -120,6 +142,16 @@
 <script src="dropbox-config-ui.js"></script>
 <script>
 const API = "http://localhost:8000";
+let currentEtudiants = [];
+const selectedEtudiants = new Set();
+
+function groupeLabel(g) {
+  if (!g) return "";
+  if (g.label) return String(g.label);
+  const nom = String(g.nom || "").trim();
+  const annee = String(g.annee_scolaire || "").trim();
+  return annee ? `${nom} (${annee})` : nom;
+}
 
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -141,9 +173,10 @@ async function loadGroupes() {
     ul.innerHTML = "<li style='color:#888'>Aucun groupe.</li>";
   } else {
     for (const g of groupes) {
+      const label = groupeLabel(g);
       const li = document.createElement("li");
       li.innerHTML = `
-        <span><strong>${g.nom}</strong>
+        <span><strong>${label}</strong>
           <small style="color:#888">(${g.nb_etudiants} étudiant${g.nb_etudiants > 1 ? "s" : ""})</small>
         </span>
         <button class="btn btn-danger btn-sm" onclick="deleteGroupe(${g.id})">✕</button>`;
@@ -152,16 +185,43 @@ async function loadGroupes() {
   }
 
   // Alimentation des <select>
-  for (const selectId of ["e-groupe", "filtre-groupe", "import-groupe"]) {
+  for (const selectId of ["e-groupe", "filtre-groupe", "import-groupe", "batch-groupe"]) {
     const sel = document.getElementById(selectId);
     const prev = sel.value;
     while (sel.options.length > 1) sel.remove(1);
     for (const g of groupes) {
-      const opt = new Option(g.nom, g.id);
+      const opt = new Option(groupeLabel(g), g.id);
       sel.appendChild(opt);
     }
     if (prev) sel.value = prev;
   }
+}
+
+function updateSelectionUi() {
+  const filteredIds = currentEtudiants.map((e) => e.id);
+  const selectedInFilter = filteredIds.filter((id) => selectedEtudiants.has(id)).length;
+  document.getElementById("selected-count").textContent = String(selectedEtudiants.size);
+  const checkAll = document.getElementById("select-all-filtre");
+  checkAll.checked = filteredIds.length > 0 && selectedInFilter === filteredIds.length;
+  checkAll.indeterminate = selectedInFilter > 0 && selectedInFilter < filteredIds.length;
+}
+
+function toggleEtudiantSelection(id, checked) {
+  if (checked) selectedEtudiants.add(id);
+  else selectedEtudiants.delete(id);
+  updateSelectionUi();
+}
+
+function toggleSelectAllFiltered(checked) {
+  for (const e of currentEtudiants) {
+    if (checked) selectedEtudiants.add(e.id);
+    else selectedEtudiants.delete(e.id);
+  }
+  loadEtudiants();
+}
+
+function findEtudiantInView(id) {
+  return currentEtudiants.find((e) => Number(e.id) === Number(id)) || null;
 }
 
 async function importClasse() {
@@ -198,18 +258,21 @@ async function importClasse() {
 
 async function createGroupe() {
   const nom = document.getElementById("g-nom").value.trim();
+  const annee = document.getElementById("g-annee").value.trim();
   if (!nom) { toast("Nom requis"); return; }
   const res = await fetch(`${API}/groupes`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nom }),
+    body: JSON.stringify({ nom, annee_scolaire: annee || null }),
   });
   if (res.ok) {
     document.getElementById("g-nom").value = "";
+    document.getElementById("g-annee").value = "";
     toast("Groupe créé !");
     await loadGroupes();
   } else {
-    toast("Erreur (nom déjà utilisé ?)");
+    const out = await res.json().catch(() => ({}));
+    toast(out.detail || "Erreur de création");
   }
 }
 
@@ -227,27 +290,84 @@ async function loadEtudiants() {
   const url = groupeId ? `${API}/etudiants?groupe_id=${groupeId}` : `${API}/etudiants`;
   const res = await fetch(url);
   const etudiants = await res.json();
+  currentEtudiants = etudiants;
+  const visibleIds = new Set(etudiants.map((e) => e.id));
+  for (const id of Array.from(selectedEtudiants)) {
+    if (!visibleIds.has(id)) selectedEtudiants.delete(id);
+  }
   const ul = document.getElementById("etudiant-list");
   ul.innerHTML = "";
 
   if (etudiants.length === 0) {
     ul.innerHTML = "<li style='color:#888'>Aucun étudiant.</li>";
+    updateSelectionUi();
     return;
   }
 
   for (const e of etudiants) {
-    const badge = e.groupe_nom
-      ? `<span style="background:#e8eaf6;color:#3949ab;padding:.1rem .45rem;border-radius:4px;font-size:.78rem;margin-left:.5rem">${e.groupe_nom}</span>`
-      : "";
+    const groupNames = Array.isArray(e.groupe_noms) ? e.groupe_noms : (e.groupe_nom ? [e.groupe_nom] : []);
+    const badges = groupNames.map((name) =>
+      `<span style="background:#e8eaf6;color:#3949ab;padding:.1rem .45rem;border-radius:4px;font-size:.78rem;margin-left:.35rem">${name}</span>`
+    ).join("");
     const li = document.createElement("li");
     li.innerHTML = `
-      <span>${e.nom} ${e.prenom}
+      <span style="display:flex;align-items:flex-start;gap:.5rem;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer">
+          <input type="checkbox" ${selectedEtudiants.has(e.id) ? "checked" : ""} onchange="toggleEtudiantSelection(${e.id}, this.checked)">
+          <span>${e.nom} ${e.prenom}</span>
+        </label>
         ${e.email ? `<small style="color:#888">(${e.email})</small>` : ""}
-        ${badge}
+        ${badges}
       </span>
-      <button class="btn btn-danger btn-sm" onclick="deleteEtudiant(${e.id})">✕</button>`;
+      <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+        <button class="btn btn-neutral btn-sm" onclick="editEtudiant(${e.id})">Modifier</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteEtudiant(${e.id})">✕</button>
+      </div>`;
     ul.appendChild(li);
   }
+  updateSelectionUi();
+}
+
+async function editEtudiant(id) {
+  const etu = findEtudiantInView(id);
+  if (!etu) {
+    toast("Étudiant introuvable");
+    return;
+  }
+
+  const newNom = prompt("Nom", etu.nom || "");
+  if (newNom === null) return;
+  const newPrenom = prompt("Prénom", etu.prenom || "");
+  if (newPrenom === null) return;
+  const newEmail = prompt("Email (laisser vide pour aucun)", etu.email || "");
+  if (newEmail === null) return;
+
+  const nom = newNom.trim();
+  const prenom = newPrenom.trim();
+  const email = newEmail.trim();
+  if (!nom || !prenom) {
+    toast("Nom et prénom requis");
+    return;
+  }
+
+  const res = await fetch(`${API}/etudiants/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nom,
+      prenom,
+      email: email || null,
+    }),
+  });
+
+  if (!res.ok) {
+    const out = await res.json().catch(() => ({}));
+    toast(out.detail || "Erreur de modification");
+    return;
+  }
+
+  toast("Étudiant modifié");
+  await loadEtudiants();
 }
 
 async function createEtudiant() {
@@ -263,7 +383,7 @@ async function createEtudiant() {
     body: JSON.stringify({
       nom, prenom,
       email: email || null,
-      groupe_id: groupeId ? parseInt(groupeId) : null,
+      groupe_ids: groupeId ? [parseInt(groupeId, 10)] : [],
     }),
   });
   if (res.ok) {
@@ -281,6 +401,82 @@ async function createEtudiant() {
 async function deleteEtudiant(id) {
   if (!confirm("Supprimer cet étudiant et toutes ses notes ?")) return;
   await fetch(`${API}/etudiants/${id}`, { method: "DELETE" });
+  selectedEtudiants.delete(id);
+  await loadGroupes();
+  await loadEtudiants();
+}
+
+async function deleteSelectedEtudiants() {
+  const ids = Array.from(selectedEtudiants);
+  if (!ids.length) {
+    toast("Aucun étudiant coché");
+    return;
+  }
+  if (!confirm(`Supprimer ${ids.length} étudiant(s) et toutes leurs notes ?`)) return;
+
+  const res = await fetch(`${API}/etudiants/batch`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) {
+    toast("Erreur de suppression");
+    return;
+  }
+  selectedEtudiants.clear();
+  toast(`${ids.length} étudiant(s) supprimé(s)`);
+  await loadGroupes();
+  await loadEtudiants();
+}
+
+async function assignSelectedToGroup() {
+  const ids = Array.from(selectedEtudiants);
+  const groupeId = parseInt(document.getElementById("batch-groupe").value, 10);
+  if (!ids.length) {
+    toast("Aucun étudiant coché");
+    return;
+  }
+  if (!Number.isFinite(groupeId)) {
+    toast("Choisir un groupe cible");
+    return;
+  }
+
+  const res = await fetch(`${API}/etudiants/batch/assign-groupe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, groupe_id: groupeId }),
+  });
+  if (!res.ok) {
+    toast("Erreur d'affectation");
+    return;
+  }
+  toast(`Affectation faite (${ids.length})`);
+  await loadGroupes();
+  await loadEtudiants();
+}
+
+async function removeSelectedFromGroup() {
+  const ids = Array.from(selectedEtudiants);
+  const groupeId = parseInt(document.getElementById("batch-groupe").value, 10);
+  if (!ids.length) {
+    toast("Aucun étudiant coché");
+    return;
+  }
+  if (!Number.isFinite(groupeId)) {
+    toast("Choisir un groupe cible");
+    return;
+  }
+
+  const res = await fetch(`${API}/etudiants/batch/remove-groupe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, groupe_id: groupeId }),
+  });
+  if (!res.ok) {
+    toast("Erreur de désaffectation");
+    return;
+  }
+  toast(`Désaffectation faite (${ids.length})`);
   await loadGroupes();
   await loadEtudiants();
 }
