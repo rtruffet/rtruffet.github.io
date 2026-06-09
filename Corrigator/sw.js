@@ -1,4 +1,4 @@
-const CACHE_NAME = "corrigator-pwa-v6";
+const CACHE_NAME = "corrigator-pwa-v7";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -60,7 +60,8 @@ self.addEventListener("fetch", (event) => {
       const target = page === "" ? "index.html" : page;
 
       try {
-        const networkRes = await fetch(req);
+        const networkReq = new Request(req, { cache: "no-store" });
+        const networkRes = await fetch(networkReq);
         if (networkRes && networkRes.status === 200 && networkRes.type === "basic") {
           cache.put(`./${target}`, networkRes.clone());
         }
@@ -75,7 +76,8 @@ self.addEventListener("fetch", (event) => {
     // JS/CSS: reseau d'abord pour diffuser les correctifs rapidement.
     if (req.destination === "script" || req.destination === "style" || req.destination === "worker") {
       try {
-        const networkRes = await fetch(req);
+        const networkReq = new Request(req, { cache: "no-store" });
+        const networkRes = await fetch(networkReq);
         if (networkRes && networkRes.status === 200 && networkRes.type === "basic") {
           cache.put(req, networkRes.clone());
         }
@@ -90,7 +92,8 @@ self.addEventListener("fetch", (event) => {
     if (cached) {
       event.waitUntil((async () => {
         try {
-          const networkRes = await fetch(req);
+          const networkReq = new Request(req, { cache: "no-store" });
+          const networkRes = await fetch(networkReq);
           if (networkRes && networkRes.status === 200 && networkRes.type === "basic") {
             await cache.put(req, networkRes.clone());
           }
@@ -102,7 +105,8 @@ self.addEventListener("fetch", (event) => {
     }
 
     try {
-      const networkRes = await fetch(req);
+      const networkReq = new Request(req, { cache: "no-store" });
+      const networkRes = await fetch(networkReq);
       if (networkRes && networkRes.status === 200 && networkRes.type === "basic") {
         cache.put(req, networkRes.clone());
       }
