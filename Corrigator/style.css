@@ -872,7 +872,7 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   flex-wrap: wrap;
 }
 #question-nav .btn {
-  font-size: .88rem;
+  font-size: .7rem;
 }
 
 /* Résumé des notes */
