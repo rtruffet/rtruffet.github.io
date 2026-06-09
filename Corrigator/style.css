@@ -763,6 +763,23 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   text-align: center;
   padding: 1.5rem 0;
 }
+#question-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .5rem;
+}
+#question-meta {
+  text-align: left;
+  min-width: 0;
+}
+#question-etudiant {
+  font-size: .95rem;
+  font-weight: 700;
+  color: #22344f;
+  margin-bottom: .2rem;
+}
 #question-exo  { font-size: .85rem; color: #666; margin-bottom: .35rem; text-transform: uppercase; letter-spacing: .06em; }
 #question-enonce {
   font-size: 1.15rem;
@@ -772,30 +789,74 @@ button:hover, .btn:hover { filter: brightness(1.1); }
 }
 #question-poids { font-size: .85rem; color: #888; margin-bottom: 1.5rem; }
 
-/* Boutons de note (0, 0.1, …, 1) */
+/* Boutons de note */
 #note-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: .5rem;
+  display: grid;
+  gap: .55rem;
+  justify-items: center;
   margin-bottom: 1.5rem;
 }
+.note-row {
+  width: 100%;
+  max-width: 540px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(84px, 1fr));
+  gap: .5rem;
+}
+.note-keypad {
+  width: 100%;
+  max-width: 540px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(84px, 1fr));
+  gap: .5rem;
+}
 .note-btn {
-  width: 60px;
-  padding: .55rem 0;
+  width: 100%;
+  min-height: 48px;
+  padding: .55rem .25rem;
   border-radius: 8px;
-  background: #e8eaf6;
-  color: #16213e;
+  background: var(--note-bg, #e8eaf6);
+  color: var(--note-text, #16213e);
   font-size: 1rem;
   font-weight: 700;
-  border: 2px solid transparent;
-  transition: background .15s, border-color .15s;
+  border: 2px solid rgba(0, 0, 0, .08);
+  transition: background .15s, border-color .15s, transform .08s;
 }
-.note-btn:hover { background: #c5cae9; }
+.note-btn:hover { background: var(--note-hover, #c5cae9); }
+.note-btn:active { transform: translateY(1px); }
 .note-btn.selected {
-  background: #1565c0;
-  color: #fff;
-  border-color: #0d47a1;
+  border-color: #10243f;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .4);
+}
+.note-row-primary .note-btn { min-height: 56px; }
+.note-btn-x {
+  --note-bg: #8d99ae;
+  --note-hover: #7f8ca1;
+  --note-text: #1d2430;
+}
+.note-btn-zero {
+  --note-bg: #e53935;
+  --note-hover: #c62828;
+  --note-text: #ffffff;
+}
+.note-btn-one {
+  --note-bg: #2e7d32;
+  --note-hover: #1b5e20;
+  --note-text: #ffffff;
+}
+.note-btn-percent {
+  --note-bg: #e8eaf6;
+  --note-hover: #c5cae9;
+  --note-text: #16213e;
+}
+.note-btn-mid {
+  --note-bg: #ff9800 !important;
+  --note-hover: #ef6c00 !important;
+  --note-text: #1a1a2e;
+}
+#note-buttons > .btn:not(.note-btn) {
+  grid-column: 1 / -1;
+  justify-self: center;
 }
 
 /* Navigation questions */
@@ -1288,12 +1349,21 @@ button:hover, .btn:hover { filter: brightness(1.1); }
     width: 100%;
   }
   .note-btn {
-    width: calc(25% - .4rem);
-    min-width: 52px;
+    min-width: 0;
     font-size: .9rem;
   }
   #note-buttons {
     gap: .4rem;
+  }
+  .note-row,
+  .note-keypad {
+    max-width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .4rem;
+  }
+  .note-row-primary .note-btn {
+    min-height: 62px;
+    font-size: 1.05rem;
   }
   #note-buttons .btn:not(.note-btn) {
     flex: 1 0 100%;
@@ -1332,6 +1402,24 @@ button:hover, .btn:hover { filter: brightness(1.1); }
     width: 100%;
     min-width: 0 !important;
   }
+  #question-nav > .btn:nth-child(1),
+  #question-nav > .btn:nth-child(2),
+  #question-nav > .btn:nth-child(4),
+  #question-nav > .btn:nth-child(5) {
+    width: calc(50% - .3rem);
+  }
+  #question-topbar {
+    gap: .5rem;
+    align-items: center;
+  }
+  #finish-exo-btn {
+    flex-shrink: 0;
+    min-height: 40px;
+  }
+  #question-meta {
+    min-width: 0;
+    flex: 1;
+  }
   .resultats-table {
     font-size: .84rem;
   }
@@ -1357,8 +1445,9 @@ button:hover, .btn:hover { filter: brightness(1.1); }
 }
 
 @media (max-width: 420px) {
-  .note-btn {
-    width: calc(33.333% - .35rem);
+  .note-row-primary .note-btn {
+    min-height: 58px;
+    font-size: .98rem;
   }
   .nav-collapse > a,
   .nav-collapse .nav-sync-actions,

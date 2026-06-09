@@ -69,7 +69,7 @@
     <strong>Raccourcis clavier :</strong>
     <span>←/→ question</span>
     <span>↑/↓ élève</span>
-    <span>0..9 = note 0.0..0.9</span>
+    <span>0..9 = note 0, 10%..90%</span>
     <span>M = 1.0</span>
     <span>X = pas répondue</span>
     <span>Suppr / Retour arrière = pas encore corrigée</span>
@@ -117,18 +117,26 @@
   <!-- ── Zone question ──────────────────────────────────────────────────── -->
   <div class="card">
     <div id="question-zone">
-      <div id="question-exo"></div>
+      <div id="question-topbar">
+        <div id="question-meta">
+          <div id="question-etudiant"></div>
+          <div id="question-exo"></div>
+        </div>
+        <button id="finish-exo-btn" class="btn btn-neutral btn-sm" onclick="finishCurrentExo()">Finir exo</button>
+      </div>
       <div id="question-enonce">Chargement du devoir…</div>
       <div id="question-poids"></div>
 
       <div id="note-buttons"></div>
 
       <div id="question-nav">
+        <button class="btn btn-neutral" onclick="prevExercice()">⤒ Exo préc.</button>
         <button class="btn btn-neutral" onclick="prevQuestion()">◀ Préc.</button>
         <select id="question-select" onchange="jumpToQuestion()"
                 style="padding:.4rem .6rem;border:1px solid #ccc;border-radius:6px;background:#fff;min-width:210px">
         </select>
         <button class="btn btn-primary" onclick="nextQuestion()">Suiv. ▶</button>
+        <button class="btn btn-neutral" onclick="nextExercice()">Exo suiv. ⤓</button>
       </div>
     </div>
 
@@ -495,9 +503,11 @@ async function init() {
 
   // Aplatissement des questions dans l'ordre exercice > question
   questions = [];
-  for (const ex of devoir.exercices) {
+  for (let exIdx = 0; exIdx < devoir.exercices.length; exIdx++) {
+    const ex = devoir.exercices[exIdx];
+    const exoKey = ex.id != null ? `id:${ex.id}` : `idx:${exIdx}`;
     for (const q of ex.questions) {
-      questions.push({ ...q, exo_titre: ex.titre });
+      questions.push({ ...q, exo_titre: ex.titre, exo_key: exoKey });
     }
   }
   document.getElementById("q-total").textContent = questions.length;
@@ -579,10 +589,14 @@ function renderQuestion() {
   }
 
   const q = questions[questionIdx];
+  const etudiant = etudiants[etudiantIdx];
   const pct = Math.round(((questionIdx + 1) / questions.length) * 100);
   document.getElementById("progress-bar").style.width = pct + "%";
   document.getElementById("q-current").textContent = questionIdx + 1;
 
+  document.getElementById("question-etudiant").textContent = etudiant
+    ? `${etudiant.prenom} ${etudiant.nom}`
+    : "";
   document.getElementById("question-exo").textContent    = q.exo_titre;
   document.getElementById("question-enonce").textContent = q.enonce;
   document.getElementById("question-poids").textContent  = `${q.poids} point${q.poids > 1 ? "s" : ""}`;
@@ -600,30 +614,61 @@ function renderQuestion() {
   finMsg.style.display = "none";
   qZone.style.display  = "";
 
-  // Boutons 0, 0.1, ..., 1
+  // Ligne principale X / 0 / 1 + pavé 10%..90%
   const container = document.getElementById("note-buttons");
   container.innerHTML = "";
+
+  const topRow = document.createElement("div");
+  topRow.className = "note-row note-row-primary";
+  container.appendChild(topRow);
 
   const unsetBtn = document.createElement("button");
   unsetBtn.className = "note-btn";
   unsetBtn.dataset.value = "x";
   unsetBtn.textContent = "X";
+  unsetBtn.classList.add("note-btn-x");
   if (touchedQuestions.has(q.id) && notesMap[q.id] == null) unsetBtn.classList.add("selected");
   unsetBtn.setAttribute("aria-label", "Marquer question non répondue");
   unsetBtn.onclick = () => setNote(null, unsetBtn);
-  container.appendChild(unsetBtn);
+  topRow.appendChild(unsetBtn);
 
-  for (let v = 0; v <= 10; v++) {
+  const zeroBtn = document.createElement("button");
+  zeroBtn.className = "note-btn";
+  zeroBtn.dataset.value = "0";
+  zeroBtn.textContent = "0";
+  zeroBtn.classList.add("note-btn-zero");
+  if (notesMap[q.id] === 0) zeroBtn.classList.add("selected");
+  zeroBtn.setAttribute("aria-label", "Mettre 0 sur 1");
+  zeroBtn.onclick = () => setNote(0, zeroBtn);
+  topRow.appendChild(zeroBtn);
+
+  const oneBtn = document.createElement("button");
+  oneBtn.className = "note-btn";
+  oneBtn.dataset.value = "1";
+  oneBtn.textContent = "1";
+  oneBtn.classList.add("note-btn-one");
+  if (notesMap[q.id] === 1) oneBtn.classList.add("selected");
+  oneBtn.setAttribute("aria-label", "Mettre 1 sur 1");
+  oneBtn.onclick = () => setNote(1, oneBtn);
+  topRow.appendChild(oneBtn);
+
+  const keypad = document.createElement("div");
+  keypad.className = "note-keypad";
+  container.appendChild(keypad);
+
+  for (let v = 1; v <= 9; v++) {
     const val   = v / 10;
-    const label = val === 0 ? "0" : val === 1 ? "1" : val.toFixed(1);
+    const label = `${v * 10}%`;
     const btn   = document.createElement("button");
     btn.className = "note-btn";
     btn.dataset.value = String(val);
     btn.textContent = label;
+    btn.classList.add("note-btn-percent");
+    if (v === 5) btn.classList.add("note-btn-mid");
     if (notesMap[q.id] === val) btn.classList.add("selected");
     btn.setAttribute("aria-label", `Mettre ${label} sur 1`);
     btn.onclick = () => setNote(val, btn);
-    container.appendChild(btn);
+    keypad.appendChild(btn);
   }
 
   const clearBtn = document.createElement("button");
@@ -639,7 +684,7 @@ function renderQuestion() {
 
   const wrap = document.createElement("div");
   wrap.id = "question-remarque-wrap";
-  wrap.style.cssText = "margin-top:1rem;max-width:720px;margin-left:auto;margin-right:auto;text-align:left";
+  wrap.style.cssText = "margin-top:1rem;margin-bottom:1rem;max-width:720px;margin-left:auto;margin-right:auto;text-align:left";
   const value = commentairesMap[q.id] || "";
   wrap.innerHTML = `
     <label for="question-remarque" style="display:block;font-size:.9rem;color:#555;margin-bottom:.35rem">Remarque pour cette question</label>
@@ -772,12 +817,82 @@ async function saveCommentaireCourant() {
   toast("Remarque enregistrée");
 }
 
+function getCurrentExerciceMeta() {
+  const q = questions[questionIdx];
+  if (!q) return null;
+  return { key: q.exo_key, titre: q.exo_titre };
+}
+
+function getQuestionsForExercice(exoKey) {
+  return questions.filter(item => item.exo_key === exoKey);
+}
+
+async function finishCurrentExo() {
+  if (!etudiants.length || !questions.length) return;
+  const meta = getCurrentExerciceMeta();
+  if (!meta) return;
+
+  const etudiant = etudiants[etudiantIdx];
+  const exoQuestions = getQuestionsForExercice(meta.key);
+  const pending = exoQuestions.filter(item => !touchedQuestions.has(item.id));
+
+  if (pending.length === 0) {
+    toast("Exercice déjà finalisé");
+    return;
+  }
+
+  await Promise.all(pending.map(async (item) => {
+    touchedQuestions.add(item.id);
+    notesMap[item.id] = null;
+    commentairesMap[item.id] = "";
+    await fetch(`${API}/notes/${etudiant.id}/${item.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ valeur: null, commentaire: "" }),
+    });
+  }));
+
+  toast(`Exo finalisé (${pending.length} question${pending.length > 1 ? "s" : ""})`);
+  renderQuestion();
+  renderRecap();
+  await refreshCorrigeesCounter();
+  focusCurrentNoteButton(true);
+}
+
 /* ── Navigation questions ────────────────────────────────────────────────── */
 function prevQuestion() {
   if (questionIdx > 0) { questionIdx--; renderQuestion(); renderRecap(); focusCurrentNoteButton(); }
 }
 function nextQuestion() {
   if (questionIdx < questions.length - 1) { questionIdx++; renderQuestion(); renderRecap(); focusCurrentNoteButton(); }
+}
+
+function goToAdjacentExercice(offset) {
+  if (!questions.length) return;
+  const currentKey = questions[questionIdx]?.exo_key;
+  const orderedKeys = [];
+  for (const item of questions) {
+    if (!orderedKeys.includes(item.exo_key)) orderedKeys.push(item.exo_key);
+  }
+  const currentPos = orderedKeys.indexOf(currentKey);
+  if (currentPos < 0) return;
+  const targetPos = currentPos + offset;
+  if (targetPos < 0 || targetPos >= orderedKeys.length) return;
+  const targetKey = orderedKeys[targetPos];
+  const firstIdx = questions.findIndex(item => item.exo_key === targetKey);
+  if (firstIdx < 0) return;
+  questionIdx = firstIdx;
+  renderQuestion();
+  renderRecap();
+  focusCurrentNoteButton();
+}
+
+function prevExercice() {
+  goToAdjacentExercice(-1);
+}
+
+function nextExercice() {
+  goToAdjacentExercice(1);
 }
 
 /* ── Navigation étudiants ────────────────────────────────────────────────── */
