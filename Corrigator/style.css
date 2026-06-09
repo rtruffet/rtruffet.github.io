@@ -872,7 +872,7 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   flex-wrap: wrap;
 }
 #question-nav .btn {
-  font-size: .7rem;
+  font-size: .67rem;
 }
 
 /* Résumé des notes */
@@ -1412,7 +1412,7 @@ button:hover, .btn:hover { filter: brightness(1.1); }
     min-width: 0 !important;
   }
   #question-nav .btn {
-    font-size: .7rem;
+    font-size: .67rem;
   }
   #question-nav > *:nth-child(1) { grid-column: 1; }
   #question-nav > *:nth-child(2) { grid-column: 2; }
