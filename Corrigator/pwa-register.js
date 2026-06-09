@@ -4,7 +4,7 @@
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", async function () {
     try {
-      const reg = await navigator.serviceWorker.register("./sw.js?v=20260416");
+      const reg = await navigator.serviceWorker.register("./sw.js?v=20260609b", { updateViaCache: "none" });
 
       // Force une verification de mise a jour au chargement.
       reg.update().catch(() => {});
