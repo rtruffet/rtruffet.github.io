@@ -684,13 +684,13 @@ function renderQuestion() {
 
   const wrap = document.createElement("div");
   wrap.id = "question-remarque-wrap";
-  wrap.style.cssText = "margin-top:1rem;margin-bottom:1rem;max-width:720px;margin-left:auto;margin-right:auto;text-align:left";
+  wrap.style.cssText = "margin-top:.65rem;margin-bottom:.6rem;max-width:720px;margin-left:auto;margin-right:auto;text-align:left";
   const value = commentairesMap[q.id] || "";
   wrap.innerHTML = `
-    <label for="question-remarque" style="display:block;font-size:.9rem;color:#555;margin-bottom:.35rem">Remarque pour cette question</label>
+    <label for="question-remarque" style="display:block;font-size:.85rem;color:#555;margin-bottom:.25rem">Remarque pour cette question</label>
     <textarea id="question-remarque" placeholder="Remarque visible dans le mail de l'élève"
-      style="width:100%;min-height:82px;padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px;background:#fafafa">${escHtml(value)}</textarea>
-    <div style="margin-top:.45rem;display:flex;justify-content:flex-end">
+      style="width:100%;min-height:68px;padding:.45rem .65rem;border:1px solid #ccc;border-radius:6px;background:#fafafa">${escHtml(value)}</textarea>
+    <div style="margin-top:.35rem;display:flex;justify-content:flex-end">
       <button class="btn btn-neutral btn-sm" onclick="saveCommentaireCourant()">Enregistrer la remarque</button>
     </div>
   `;

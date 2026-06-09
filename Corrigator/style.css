@@ -787,14 +787,14 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   color: #16213e;
   margin-bottom: .5rem;
 }
-#question-poids { font-size: .85rem; color: #888; margin-bottom: 1.5rem; }
+#question-poids { font-size: .85rem; color: #888; margin-bottom: 1rem; }
 
 /* Boutons de note */
 #note-buttons {
   display: grid;
   gap: .55rem;
   justify-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.1rem;
 }
 .note-row {
   width: 100%;
@@ -825,10 +825,14 @@ button:hover, .btn:hover { filter: brightness(1.1); }
 .note-btn:hover { background: var(--note-hover, #c5cae9); }
 .note-btn:active { transform: translateY(1px); }
 .note-btn.selected {
-  border-color: #10243f;
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .4);
+  border-color: #000000;
+  border-width: 4px;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .55);
 }
-.note-row-primary .note-btn { min-height: 56px; }
+.note-row-primary .note-btn {
+  min-height: 66px;
+  font-size: 1.14rem;
+}
 .note-btn-x {
   --note-bg: #8d99ae;
   --note-hover: #7f8ca1;
@@ -1362,8 +1366,8 @@ button:hover, .btn:hover { filter: brightness(1.1); }
     gap: .4rem;
   }
   .note-row-primary .note-btn {
-    min-height: 62px;
-    font-size: 1.05rem;
+    min-height: 74px;
+    font-size: 1.18rem;
   }
   #note-buttons .btn:not(.note-btn) {
     flex: 1 0 100%;
@@ -1395,6 +1399,8 @@ button:hover, .btn:hover { filter: brightness(1.1); }
     min-width: 0 !important;
   }
   #question-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: .6rem;
   }
   #question-nav .btn,
@@ -1402,11 +1408,13 @@ button:hover, .btn:hover { filter: brightness(1.1); }
     width: 100%;
     min-width: 0 !important;
   }
-  #question-nav > .btn:nth-child(1),
-  #question-nav > .btn:nth-child(2),
-  #question-nav > .btn:nth-child(4),
-  #question-nav > .btn:nth-child(5) {
-    width: calc(50% - .3rem);
+  #question-nav > *:nth-child(1) { grid-column: 1; }
+  #question-nav > *:nth-child(2) { grid-column: 2; }
+  #question-nav > *:nth-child(4) { grid-column: 3; }
+  #question-nav > *:nth-child(5) { grid-column: 4; }
+  #question-nav > *:nth-child(3) {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
   #question-topbar {
     gap: .5rem;
@@ -1446,8 +1454,8 @@ button:hover, .btn:hover { filter: brightness(1.1); }
 
 @media (max-width: 420px) {
   .note-row-primary .note-btn {
-    min-height: 58px;
-    font-size: .98rem;
+    min-height: 70px;
+    font-size: 1.08rem;
   }
   .nav-collapse > a,
   .nav-collapse .nav-sync-actions,
