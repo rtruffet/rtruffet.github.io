@@ -68,6 +68,8 @@
   <div style="font-size:.85rem;color:#355070;display:flex;flex-wrap:wrap;gap:.8rem;align-items:center">
     <strong>Raccourcis clavier :</strong>
     <span>←/→ question</span>
+    <span>Ctrl/Cmd+←/→ exercice précédent/suivant</span>
+    <span>Ctrl/Cmd+Entrée = finir exo</span>
     <span>↑/↓ élève</span>
     <span>0..9 = note 0, 10%..90%</span>
     <span>M = 1.0</span>
@@ -353,6 +355,22 @@ function handleGlobalShortcuts(evt) {
   if (key === "Tab" && evt.shiftKey) {
     evt.preventDefault();
     focusCurrentNoteButton();
+    return;
+  }
+
+  if ((evt.ctrlKey || evt.metaKey) && !evt.altKey && key === "ArrowLeft") {
+    evt.preventDefault();
+    prevExercice();
+    return;
+  }
+  if ((evt.ctrlKey || evt.metaKey) && !evt.altKey && key === "ArrowRight") {
+    evt.preventDefault();
+    nextExercice();
+    return;
+  }
+  if ((evt.ctrlKey || evt.metaKey) && !evt.altKey && key === "Enter") {
+    evt.preventDefault();
+    finishCurrentExo();
     return;
   }
 
