@@ -780,7 +780,6 @@ button:hover, .btn:hover { filter: brightness(1.1); }
   color: #22344f;
   margin-bottom: .2rem;
 }
-#question-exo  { font-size: .85rem; color: #666; margin-bottom: .35rem; text-transform: uppercase; letter-spacing: .06em; }
 #question-enonce {
   font-size: 1.15rem;
   font-weight: 600;

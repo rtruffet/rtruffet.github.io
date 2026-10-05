@@ -122,7 +122,6 @@
       <div id="question-topbar">
         <div id="question-meta">
           <div id="question-etudiant"></div>
-          <div id="question-exo"></div>
         </div>
         <button id="finish-exo-btn" class="btn btn-neutral btn-sm" onclick="finishCurrentExo()">Finir exo</button>
       </div>
@@ -615,8 +614,8 @@ function renderQuestion() {
   document.getElementById("question-etudiant").textContent = etudiant
     ? `${etudiant.prenom} ${etudiant.nom}`
     : "";
-  document.getElementById("question-exo").textContent    = q.exo_titre;
-  document.getElementById("question-enonce").textContent = q.enonce;
+  document.getElementById("question-enonce").textContent =
+    q.exo_titre ? `${q.exo_titre} – ${q.enonce}` : q.enonce;
   document.getElementById("question-poids").textContent  = `${q.poids} point${q.poids > 1 ? "s" : ""}`;
   document.getElementById("question-select").value = String(questionIdx);
   const url = new URL(location.href);
