@@ -897,7 +897,15 @@ function goToAdjacentExercice(offset) {
   const currentPos = orderedKeys.indexOf(currentKey);
   if (currentPos < 0) return;
   const targetPos = currentPos + offset;
-  if (targetPos < 0 || targetPos >= orderedKeys.length) return;
+  if (targetPos >= orderedKeys.length) return;
+  if (targetPos < 0) {
+    if (questionIdx === 0) return;
+    questionIdx = 0;
+    renderQuestion();
+    renderRecap();
+    focusCurrentNoteButton();
+    return;
+  }
   const targetKey = orderedKeys[targetPos];
   const firstIdx = questions.findIndex(item => item.exo_key === targetKey);
   if (firstIdx < 0) return;
