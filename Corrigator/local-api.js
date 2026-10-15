@@ -766,13 +766,14 @@
           const qs = deepClone(ex.questions).sort(byOrderThenId);
           qs.forEach((q, idx) => {
             const noteObj = notesMap.get(q.id);
-            const valeur = noteObj && noteObj.valeur != null ? Number(noteObj.valeur) : 0;
-            const points = Number((valeur * Number(q.poids || 0)).toFixed(3));
+            const points = noteObj && noteObj.valeur != null
+              ? `${Number((Number(noteObj.valeur) * Number(q.poids || 0)).toFixed(3))}/${q.poids}`
+              : `--/${q.poids}`;
             const commentaire = String((noteObj && noteObj.commentaire) || "").trim();
             const qName = String(q.enonce || "").trim() || `Question ${Number(q.ordre || 0) + 1}`;
             const branch = idx === qs.length - 1 ? "└" : "├";
             const commentBranch = branch === "└" ? "  " : "│ ";
-            let line = `  ${branch} ${qName} : ${points}/${q.poids} pts`;
+            let line = `  ${branch} ${qName} : ${points} pts`;
             if (commentaire) line += `\n  ${commentBranch} └ Remarque : ${commentaire}`;
             exoLines.push(line);
           });
@@ -798,7 +799,7 @@
           `Ajustements : individuel ${r.bonus_abs >= 0 ? "+" : ""}${r.bonus_abs.toFixed(2)} point(s), individuel ${r.bonus_pct >= 0 ? "+" : ""}${r.bonus_pct.toFixed(2)}%, groupe ${r.rehausse_groupe_pct >= 0 ? "+" : ""}${r.rehausse_groupe_pct.toFixed(2)}%`
         );
       }
-      if (config.include_classement) lines.push(`Classement dans le groupe (copies corrigees) : ${rangTxt}`);
+      if (config.include_classement) lines.push(`Classement : ${rangTxt}`);
 
       if (config.include_detail_correction) {
         lines.push("", "Detail de la correction :", detailLines.length ? detailLines.join("\n\n") : "(Aucune question dans ce devoir)");
