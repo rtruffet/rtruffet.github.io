@@ -226,7 +226,10 @@ function focusQuestionSelect() {
 
 function focusStudentFilter() {
   const input = document.getElementById("filtre-eleve");
-  if (input) input.focus();
+  if (input) {
+    input.focus();
+    input.select();
+  }
 }
 
 function focusGroupFilter() {
