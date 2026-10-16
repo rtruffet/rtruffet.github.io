@@ -785,7 +785,7 @@
       const lines = [
         `Bonjour ${etudiant.prenom},`,
         "",
-        `Voici votre resultat pour « ${devoir.titre} » :`,
+        `Voici votre résultat pour « ${devoir.titre} » :`,
       ];
 
       if (String(config.texte_libre_1 || "").trim()) {
@@ -802,7 +802,7 @@
       if (config.include_classement) lines.push(`Classement : ${rangTxt}`);
 
       if (config.include_detail_correction) {
-        lines.push("", "Detail de la correction :", detailLines.length ? detailLines.join("\n\n") : "(Aucune question dans ce devoir)");
+        lines.push("", "Détail de la correction :", detailLines.length ? detailLines.join("\n\n") : "(Aucune question dans ce devoir)");
       }
 
       if (String(config.texte_libre_2 || "").trim()) {
